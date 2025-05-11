@@ -65,6 +65,8 @@ let socket, username;
 let players = {}, colliding = {};
 let keys = {}, dpad = {};
 
+const interactBtn = document.getElementById("interact");
+
 function start() {
   username = document.getElementById("username").value.trim();
   if (!username) return alert("Please enter a name");
@@ -79,27 +81,34 @@ function start() {
     let msg = JSON.parse(e.data);
     colliding = msg.colliding || {};
 
-    for (let name in msg.players) {
-      const incoming = msg.players[name];
-      if (!players[name]) {
-        // First time seeing this player
-        players[name] = {
-          x: incoming.x,
-          y: incoming.y,
-          smoothX: incoming.x,
-          smoothY: incoming.y
-        };
-      } else {
-        // Update target position
-        players[name].x = incoming.x;
-        players[name].y = incoming.y;
+    if (msg.type === "interactionMessage" && msg.from && msg.from !== username) {
+      let target = players[msg.from];
+      if (target) {
+        target.interactText = "Hi!";
+        target.interactTimer = 60;
       }
     }
 
-    // Remove players who disconnected
-    for (let name in players) {
-      if (!(name in msg.players)) {
-        delete players[name];
+    if (msg.players) {
+      for (let name in msg.players) {
+        const incoming = msg.players[name];
+        if (!players[name]) {
+          players[name] = {
+            x: incoming.x,
+            y: incoming.y,
+            smoothX: incoming.x,
+            smoothY: incoming.y
+          };
+        } else {
+          players[name].x = incoming.x;
+          players[name].y = incoming.y;
+        }
+      }
+
+      for (let name in players) {
+        if (!(name in msg.players)) {
+          delete players[name];
+        }
       }
     }
   };
@@ -116,6 +125,12 @@ window.addEventListener("blur",    _ => keys = {});
   dpad[dir] = false;
   btn.addEventListener("touchstart", e => { e.preventDefault(); dpad[dir] = true; });
   btn.addEventListener("touchend",   e => { e.preventDefault(); dpad[dir] = false; });
+});
+
+interactBtn.addEventListener("click", () => {
+  if (socket && socket.readyState === WebSocket.OPEN) {
+    socket.send(JSON.stringify({ type: "interact" }));
+  }
 });
 
 function loop() {
@@ -137,14 +152,14 @@ function loop() {
     }
   }
 
-  // Smoothly interpolate all players
+  // Smooth interpolate
   for (let name in players) {
     const p = players[name];
     p.smoothX += (p.x - p.smoothX) * 0.2;
     p.smoothY += (p.y - p.smoothY) * 0.2;
   }
 
-  // Drawing
+  // Draw
   ctx.clearRect(0, 0, 800, 600);
   for (let name in players) {
     const p = players[name];
@@ -158,19 +173,23 @@ function loop() {
     ctx.fillStyle = "#fff";
     ctx.font = "10px sans-serif";
     ctx.fillText(name, p.smoothX, p.smoothY - 4);
+
+    if (p.interactText && p.interactTimer > 0) {
+      ctx.fillText(p.interactText, p.smoothX, p.smoothY - 16);
+      p.interactTimer--;
+      if (p.interactTimer <= 0) delete p.interactText;
+    }
+  }
+
+  // Show interact button if colliding
+  if (colliding[username]) {
+    interactBtn.style.display = "block";
+  } else {
+    interactBtn.style.display = "none";
   }
 
   requestAnimationFrame(loop);
 }
-
-document.getElementById("interact").addEventListener("click", () => {
-  if (socket && socket.readyState === WebSocket.OPEN) {
-    socket.send(JSON.stringify({ type: "interact" }));
-    
-  }
-});
-
-
 </script>
 
 </body>
