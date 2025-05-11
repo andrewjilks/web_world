@@ -158,6 +158,30 @@ function loop() {
     }
   }
 
+  // Check if the interact button should be shown
+  let interactButton = document.getElementById("interact");
+  let showInteractButton = false;
+
+  for (let name in players) {
+    if (name === username) continue;  // Skip the current player
+
+    let otherPlayer = players[name];
+    let distance = Math.sqrt(Math.pow(me.x - otherPlayer.x, 2) + Math.pow(me.y - otherPlayer.y, 2));
+
+    // Show the button if the player is within a certain range (e.g., 50 pixels)
+    if (distance <= 50) {
+      showInteractButton = true;
+      break;  // If any player is within range, no need to check further
+    }
+  }
+
+  // Toggle visibility of the interact button
+  if (showInteractButton) {
+    interactButton.style.display = "block";
+  } else {
+    interactButton.style.display = "none";
+  }
+
   // Smoothly interpolate all players
   for (let name in players) {
     const p = players[name];
