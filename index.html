@@ -1,3 +1,45 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8" />
+  <title>Multiplayer Pixels</title>
+  <style>
+    body { margin:0; background:#222; overflow:hidden; }
+    canvas { display:block; }
+    #login {
+      position:absolute; top:50%; left:50%;
+      transform:translate(-50%,-50%);
+      color:#fff; text-align:center;
+    }
+    #dpad {
+      position:fixed; bottom:20px; left:20px;
+      display:none; user-select:none;
+    }
+    #dpad button {
+      width:48px; height:48px; margin:2px;
+      font-size:20px; background:rgba(255,255,255,0.2);
+      color:#fff; border:none; border-radius:4px;
+    }
+    #dpad button:active { background:rgba(255,255,255,0.4); }
+  </style>
+</head>
+<body>
+
+<div id="login">
+  <h2>Enter Name</h2>
+  <input id="username" autofocus />
+  <button onclick="start()">Play</button>
+</div>
+
+<canvas id="game" width="800" height="600" style="display:none"></canvas>
+
+<div id="dpad">
+  <button id="up">↑</button><br/>
+  <button id="left">←</button>
+  <button id="down">↓</button>
+  <button id="right">→</button>
+</div>
+
 <script>
 const canvas = document.getElementById("game");
 const ctx = canvas.getContext("2d");
@@ -16,10 +58,22 @@ function start() {
   const proto = location.protocol === "https:" ? "wss" : "ws";
   socket = new WebSocket(`${proto}://${location.host}/ws/${username}`);
 
+  socket.onopen = () => {
+    console.log("WebSocket connection established");
+  };
+
   socket.onmessage = e => {
     let msg = JSON.parse(e.data);
     players = msg.players;
     colliding = msg.colliding || {};
+  };
+
+  socket.onerror = (err) => {
+    console.error("WebSocket error: ", err);
+  };
+
+  socket.onclose = (event) => {
+    console.log("WebSocket closed", event);
   };
 
   requestAnimationFrame(loop);
@@ -81,3 +135,6 @@ function loop() {
   requestAnimationFrame(loop);
 }
 </script>
+
+</body>
+</html>
