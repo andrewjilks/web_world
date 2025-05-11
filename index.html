@@ -21,21 +21,6 @@
       color:#fff; border:none; border-radius:4px;
     }
     #dpad button:active { background:rgba(255,255,255,0.4); }
-
-    #interact {
-      position:fixed;
-      bottom:90px;
-      left:110px;
-      width:64px;
-      height:64px;
-      background:rgba(255,255,255,0.2);
-      border:none;
-      border-radius:8px;
-      color:white;
-      font-size:16px;
-      display:none;
-      user-select:none;
-    }
   </style>
 </head>
 <body>
@@ -53,9 +38,24 @@
   <button id="left">←</button>
   <button id="down">↓</button>
   <button id="right">→</button>
+
+  <button id="interact" style="
+  position:fixed;
+  bottom:90px;
+  left:110px;
+  width:64px;
+  height:64px;
+  background:rgba(255,255,255,0.2);
+  border:none;
+  border-radius:8px;
+  color:white;
+  font-size:16px;
+  display:none;
+  user-select:none;
+">👋</button>
+
 </div>
 
-<button id="interact">👋</button>
 
 <script>
 const canvas = document.getElementById("game");
@@ -64,8 +64,6 @@ const size = 10, speed = 4;
 let socket, username;
 let players = {}, colliding = {};
 let keys = {}, dpad = {};
-
-const interactButton = document.getElementById("interact");
 
 function start() {
   username = document.getElementById("username").value.trim();
@@ -84,6 +82,7 @@ function start() {
     for (let name in msg.players) {
       const incoming = msg.players[name];
       if (!players[name]) {
+        // First time seeing this player
         players[name] = {
           x: incoming.x,
           y: incoming.y,
@@ -91,11 +90,13 @@ function start() {
           smoothY: incoming.y
         };
       } else {
+        // Update target position
         players[name].x = incoming.x;
         players[name].y = incoming.y;
       }
     }
 
+    // Remove players who disconnected
     for (let name in players) {
       if (!(name in msg.players)) {
         delete players[name];
@@ -106,6 +107,7 @@ function start() {
   requestAnimationFrame(loop);
 }
 
+// Input handling
 window.addEventListener("keydown", e => keys[e.key.toLowerCase()] = true);
 window.addEventListener("keyup",   e => keys[e.key.toLowerCase()] = false);
 window.addEventListener("blur",    _ => keys = {});
@@ -114,11 +116,6 @@ window.addEventListener("blur",    _ => keys = {});
   dpad[dir] = false;
   btn.addEventListener("touchstart", e => { e.preventDefault(); dpad[dir] = true; });
   btn.addEventListener("touchend",   e => { e.preventDefault(); dpad[dir] = false; });
-});
-
-interactButton.addEventListener("click", () => {
-  alert("You interacted!");
-  // Future enhancement: emit interaction over WebSocket
 });
 
 function loop() {
@@ -140,12 +137,14 @@ function loop() {
     }
   }
 
+  // Smoothly interpolate all players
   for (let name in players) {
     const p = players[name];
     p.smoothX += (p.x - p.smoothX) * 0.2;
     p.smoothY += (p.y - p.smoothY) * 0.2;
   }
 
+  // Drawing
   ctx.clearRect(0, 0, 800, 600);
   for (let name in players) {
     const p = players[name];
@@ -161,24 +160,17 @@ function loop() {
     ctx.fillText(name, p.smoothX, p.smoothY - 4);
   }
 
-  // Check for proximity to another player
-  let interacting = false;
-  if (me) {
-    for (let name in players) {
-      if (name === username) continue;
-      const other = players[name];
-      const dist = Math.hypot(me.x - other.x, me.y - other.y);
-      if (dist < 20) {
-        interacting = true;
-        break;
-      }
-    }
-  }
-
-  interactButton.style.display = interacting ? "block" : "none";
-
   requestAnimationFrame(loop);
 }
+
+document.getElementById("interact").addEventListener("click", () => {
+  if (socket && socket.readyState === WebSocket.OPEN) {
+    socket.send(JSON.stringify({ type: "interact" }));
+    
+  }
+});
+
+
 </script>
 
 </body>
