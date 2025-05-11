@@ -65,8 +65,6 @@ let socket, username;
 let players = {}, colliding = {};
 let keys = {}, dpad = {};
 
-const interactBtn = document.getElementById("interact");
-
 function start() {
   username = document.getElementById("username").value.trim();
   if (!username) return alert("Please enter a name");
@@ -81,34 +79,27 @@ function start() {
     let msg = JSON.parse(e.data);
     colliding = msg.colliding || {};
 
-    if (msg.type === "interactionMessage" && msg.from && msg.from !== username) {
-      let target = players[msg.from];
-      if (target) {
-        target.interactText = "Hi!";
-        target.interactTimer = 60;
+    for (let name in msg.players) {
+      const incoming = msg.players[name];
+      if (!players[name]) {
+        // First time seeing this player
+        players[name] = {
+          x: incoming.x,
+          y: incoming.y,
+          smoothX: incoming.x,
+          smoothY: incoming.y
+        };
+      } else {
+        // Update target position
+        players[name].x = incoming.x;
+        players[name].y = incoming.y;
       }
     }
 
-    if (msg.players) {
-      for (let name in msg.players) {
-        const incoming = msg.players[name];
-        if (!players[name]) {
-          players[name] = {
-            x: incoming.x,
-            y: incoming.y,
-            smoothX: incoming.x,
-            smoothY: incoming.y
-          };
-        } else {
-          players[name].x = incoming.x;
-          players[name].y = incoming.y;
-        }
-      }
-
-      for (let name in players) {
-        if (!(name in msg.players)) {
-          delete players[name];
-        }
+    // Remove players who disconnected
+    for (let name in players) {
+      if (!(name in msg.players)) {
+        delete players[name];
       }
     }
   };
@@ -117,20 +108,35 @@ function start() {
 }
 
 // Input handling
-window.addEventListener("keydown", e => keys[e.key.toLowerCase()] = true);
-window.addEventListener("keyup",   e => keys[e.key.toLowerCase()] = false);
-window.addEventListener("blur",    _ => keys = {});
-["up","down","left","right"].forEach(dir => {
+window.addEventListener("keydown", e => {
+  keys[e.key.toLowerCase()] = true;
+
+  if (e.key.toLowerCase() === "e") {
+    // Send the interact message when E is pressed
+    sendInteractMessage();
+  }
+});
+
+window.addEventListener("keyup", e => {
+  keys[e.key.toLowerCase()] = false;
+});
+window.addEventListener("blur", _ => keys = {});
+["up", "down", "left", "right"].forEach(dir => {
   let btn = document.getElementById(dir);
   dpad[dir] = false;
   btn.addEventListener("touchstart", e => { e.preventDefault(); dpad[dir] = true; });
-  btn.addEventListener("touchend",   e => { e.preventDefault(); dpad[dir] = false; });
+  btn.addEventListener("touchend", e => { e.preventDefault(); dpad[dir] = false; });
 });
 
-interactBtn.addEventListener("click", () => {
+function sendInteractMessage() {
   if (socket && socket.readyState === WebSocket.OPEN) {
     socket.send(JSON.stringify({ type: "interact" }));
   }
+}
+
+document.getElementById("interact").addEventListener("click", () => {
+  // Handle the click event for the interact button
+  sendInteractMessage();
 });
 
 function loop() {
@@ -152,14 +158,14 @@ function loop() {
     }
   }
 
-  // Smooth interpolate
+  // Smoothly interpolate all players
   for (let name in players) {
     const p = players[name];
     p.smoothX += (p.x - p.smoothX) * 0.2;
     p.smoothY += (p.y - p.smoothY) * 0.2;
   }
 
-  // Draw
+  // Drawing
   ctx.clearRect(0, 0, 800, 600);
   for (let name in players) {
     const p = players[name];
@@ -173,19 +179,6 @@ function loop() {
     ctx.fillStyle = "#fff";
     ctx.font = "10px sans-serif";
     ctx.fillText(name, p.smoothX, p.smoothY - 4);
-
-    if (p.interactText && p.interactTimer > 0) {
-      ctx.fillText(p.interactText, p.smoothX, p.smoothY - 16);
-      p.interactTimer--;
-      if (p.interactTimer <= 0) delete p.interactText;
-    }
-  }
-
-  // Show interact button if colliding
-  if (colliding[username]) {
-    interactBtn.style.display = "block";
-  } else {
-    interactBtn.style.display = "none";
   }
 
   requestAnimationFrame(loop);
