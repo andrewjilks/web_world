@@ -135,8 +135,14 @@ function sendInteractMessage() {
 }
 
 document.getElementById("interact").addEventListener("click", () => {
-  // Handle the click event for the interact button
-  sendInteractMessage();
+  if (socket && socket.readyState === WebSocket.OPEN) {
+    // Send a message indicating the player is interacting
+    socket.send(JSON.stringify({ type: "interact" }));
+
+    console.log("Interact button clicked!");  // Debugging message in console
+  } else {
+    console.log("WebSocket not open or ready!");  // Debugging message in console
+  }
 });
 
 function loop() {
