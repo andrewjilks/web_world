@@ -1,77 +1,119 @@
 <!DOCTYPE html>
-<html lang="en">
+<html>
 <head>
-    <meta charset="UTF-8">
-    <title>Browser World</title>
-    <style>
-        canvas {
-            background: #222;
-            display: block;
-            margin: 0 auto;
-        }
-        #nameInput {
-            display: block;
-            margin: 10px auto;
-            text-align: center;
-        }
-    </style>
+  <meta charset="utf-8" />
+  <title>Multiplayer Pixels</title>
+  <style>
+    body { margin:0; background:#222; overflow:hidden; }
+    canvas { display:block; }
+    #login {
+      position:absolute; top:50%; left:50%;
+      transform:translate(-50%,-50%);
+      color:#fff; text-align:center;
+    }
+    #dpad {
+      position:fixed; bottom:20px; left:20px;
+      display:none; user-select:none;
+    }
+    #dpad button {
+      width:48px; height:48px; margin:2px;
+      font-size:20px; background:rgba(255,255,255,0.2);
+      color:#fff; border:none; border-radius:4px;
+    }
+    #dpad button:active { background:rgba(255,255,255,0.4); }
+  </style>
 </head>
 <body>
-    <input id="nameInput" placeholder="Enter your name" />
-    <canvas id="gameCanvas" width="600" height="400"></canvas>
 
-    <script>
-        const canvas = document.getElementById("gameCanvas");
-        const ctx = canvas.getContext("2d");
-        const nameInput = document.getElementById("nameInput");
+<div id="login">
+  <h2>Enter Name</h2>
+  <input id="username" autofocus />
+  <button onclick="start()">Play</button>
+</div>
 
-        let players = {};
-        let myName = "";
-        let myColor = "#00ff00";
+<canvas id="game" width="800" height="600" style="display:none"></canvas>
 
-        const socket = new WebSocket("wss://webworld-production.up.railway.app/ws/" + Math.floor(Math.random() * 10000));
+<div id="dpad">
+  <button id="up">↑</button><br/>
+  <button id="left">←</button>
+  <button id="down">↓</button>
+  <button id="right">→</button>
+</div>
 
-        socket.onopen = () => {
-            console.log("Connected to WebSocket server");
-        };
+<script>
+const canvas = document.getElementById("game");
+const ctx = canvas.getContext("2d");
+const size = 10, speed = 4;
+let socket, username;
+let players = {}, colliding = {};
+let keys = {}, dpad = {};
 
-        socket.onmessage = (event) => {
-            players = JSON.parse(event.data);
-        };
+function start() {
+  username = document.getElementById("username").value.trim();
+  if (!username) return alert("Please enter a name");
+  document.getElementById("login").style.display = "none";
+  canvas.style.display = "block";
+  document.getElementById("dpad").style.display = "block";
 
-        nameInput.addEventListener("change", () => {
-            myName = nameInput.value.trim();
-        });
+  const proto = location.protocol === "https:" ? "wss" : "ws";
+  socket = new WebSocket(`${proto}://${location.host}/ws/${username}`);
 
-        const keys = {};
-        document.addEventListener("keydown", e => keys[e.key.toLowerCase()] = true);
-        document.addEventListener("keyup", e => keys[e.key.toLowerCase()] = false);
+  socket.onmessage = e => {
+    let msg = JSON.parse(e.data);
+    players = msg.players;
+    colliding = msg.colliding || {};
+  };
 
-        function gameLoop() {
-            if (myName && socket.readyState === WebSocket.OPEN) {
-                let dx = 0, dy = 0;
-                if (keys["w"]) dy -= 1;
-                if (keys["s"]) dy += 1;
-                if (keys["a"]) dx -= 1;
-                if (keys["d"]) dx += 1;
+  requestAnimationFrame(loop);
+}
 
-                socket.send(JSON.stringify({ name: myName, dx, dy }));
-            }
+// Keyboard input
+window.addEventListener("keydown", e => keys[e.key.toLowerCase()] = true);
+window.addEventListener("keyup",   e => keys[e.key.toLowerCase()] = false);
+window.addEventListener("blur",    _ => keys = {});
 
-            ctx.clearRect(0, 0, canvas.width, canvas.height);
+// D-pad mobile input
+["up","down","left","right"].forEach(dir => {
+  let btn = document.getElementById(dir);
+  dpad[dir] = false;
+  btn.addEventListener("touchstart", e => { e.preventDefault(); dpad[dir] = true; });
+  btn.addEventListener("touchend",   e => { e.preventDefault(); dpad[dir] = false; });
+});
 
-            for (let id in players) {
-                const p = players[id];
-                ctx.fillStyle = p.name === myName ? myColor : "#ff0000";
-                ctx.fillRect(p.x, p.y, 20, 20);
-                ctx.fillStyle = "#fff";
-                ctx.fillText(p.name, p.x, p.y - 5);
-            }
+function loop() {
+  let dx=0, dy=0;
+  if (keys["w"]||dpad["up"])    dy=-1;
+  if (keys["s"]||dpad["down"])  dy= 1;
+  if (keys["a"]||dpad["left"])  dx=-1;
+  if (keys["d"]||dpad["right"]) dx= 1;
+  if (dx && dy) { dx*=0.7071; dy*=0.7071; }
 
-            requestAnimationFrame(gameLoop);
-        }
+  let me = players[username] || { x:400, y:300 };
+  me.x = Math.max(0, Math.min(800-size, me.x + dx*speed));
+  me.y = Math.max(0, Math.min(600-size, me.y + dy*speed));
 
-        gameLoop();
-    </script>
+  if (socket && socket.readyState === 1) {
+    socket.send(JSON.stringify({ x:me.x, y:me.y }));
+  }
+
+  ctx.clearRect(0,0,800,600);
+  for (let name in players) {
+    let p = players[name];
+    let color = colliding[name]
+      ? (name===username ? "#fa0" : "#f00")
+      : (name===username ? "#0f0" : "#0ff");
+    ctx.fillStyle = color;
+    ctx.fillRect(p.x, p.y, size, size);
+    ctx.strokeStyle = "#fff";
+    ctx.strokeRect(p.x, p.y, size, size);
+    ctx.fillStyle = "#fff";
+    ctx.font = "10px sans-serif";
+    ctx.fillText(name, p.x, p.y - 4);
+  }
+
+  requestAnimationFrame(loop);
+}
+</script>
+
 </body>
 </html>
