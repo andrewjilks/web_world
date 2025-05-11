@@ -88,12 +88,18 @@ function loop() {
   if (keys["d"]||dpad["right"]) dx= 1;
   if (dx && dy) { dx*=0.7071; dy*=0.7071; }
 
-  let me = players[username] || { x:400, y:300 };
-  me.x = Math.max(0, Math.min(800-size, me.x + dx*speed));
-  me.y = Math.max(0, Math.min(600-size, me.y + dy*speed));
+  if (!players[username]) players[username] = { x:400, y:300 };
+    let me = players[username];
 
+    // Predict locally
+    me.x += dx * speed;
+    me.y += dy * speed;
+    me.x = Math.max(0, Math.min(800 - size, me.x));
+    me.y = Math.max(0, Math.min(600 - size, me.y));
+
+  // Send delta or full state
   if (socket && socket.readyState === 1) {
-    socket.send(JSON.stringify({ x:me.x, y:me.y }));
+    socket.send(JSON.stringify({ x: me.x, y: me.y }));
   }
 
   ctx.clearRect(0,0,800,600);
@@ -102,6 +108,8 @@ function loop() {
     let color = colliding[name]
       ? (name===username ? "#fa0" : "#f00")
       : (name===username ? "#0f0" : "#0ff");
+  
+    // draw predicted state for self only
     ctx.fillStyle = color;
     ctx.fillRect(p.x, p.y, size, size);
     ctx.strokeStyle = "#fff";
