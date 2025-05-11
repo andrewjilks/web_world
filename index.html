@@ -81,35 +81,36 @@ window.addEventListener("blur",    _ => keys = {});
 });
 
 function loop() {
-  let dx=0, dy=0;
-  if (keys["w"]||dpad["up"])    dy=-1;
-  if (keys["s"]||dpad["down"])  dy= 1;
-  if (keys["a"]||dpad["left"])  dx=-1;
-  if (keys["d"]||dpad["right"]) dx= 1;
-  if (dx && dy) { dx*=0.7071; dy*=0.7071; }
+  // Compute movement vector
+  let dx = 0, dy = 0;
+  if (keys["w"] || dpad["up"])    dy = -1;
+  if (keys["s"] || dpad["down"])  dy = 1;
+  if (keys["a"] || dpad["left"])  dx = -1;
+  if (keys["d"] || dpad["right"]) dx = 1;
 
-  if (!players[username]) players[username] = { x:400, y:300 };
-    let me = players[username];
+  if (dx && dy) { dx *= 0.7071; dy *= 0.7071; }
 
-    // Predict locally
-    me.x += dx * speed;
-    me.y += dy * speed;
-    me.x = Math.max(0, Math.min(800 - size, me.x));
-    me.y = Math.max(0, Math.min(600 - size, me.y));
+  // Send relative position change to the server
+  let me = players[username] || { x: 400, y: 300 };
+  let newX = Math.max(0, Math.min(800 - size, me.x + dx * speed));
+  let newY = Math.max(0, Math.min(600 - size, me.y + dy * speed));
 
-  // Send delta or full state
-  if (socket && socket.readyState === 1) {
-    socket.send(JSON.stringify({ x: me.x, y: me.y }));
+  // Only send a delta if there's a change in position
+  if (newX !== me.x || newY !== me.y) {
+    socket.send(JSON.stringify({ dx: newX - me.x, dy: newY - me.y }));
   }
 
-  ctx.clearRect(0,0,800,600);
+  // Update the player's position locally
+  me.x = newX;
+  me.y = newY;
+
+  // Draw all players
+  ctx.clearRect(0, 0, 800, 600);
   for (let name in players) {
     let p = players[name];
     let color = colliding[name]
-      ? (name===username ? "#fa0" : "#f00")
-      : (name===username ? "#0f0" : "#0ff");
-
-    // draw predicted state for self only
+      ? (name === username ? "#fa0" : "#f00")
+      : (name === username ? "#0f0" : "#0ff");
     ctx.fillStyle = color;
     ctx.fillRect(p.x, p.y, size, size);
     ctx.strokeStyle = "#fff";
