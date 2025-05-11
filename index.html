@@ -1,151 +1,225 @@
 <!DOCTYPE html>
 <html>
 <head>
-  <meta charset="utf-8" />
-  <title>Multiplayer Pixels</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
   <style>
-    body { margin:0; background:#222; overflow:hidden; }
-    canvas { display:block; }
-    #login {
-      position:absolute; top:50%; left:50%;
-      transform:translate(-50%,-50%);
-      color:#fff; text-align:center;
+    html, body {
+      margin: 0;
+      overflow: hidden;
+      background: black;
     }
-    #dpad {
-      position:fixed; bottom:20px; left:20px;
-      display:none; user-select:none;
+    canvas {
+      display: block;
     }
-    #dpad button {
-      width:48px; height:48px; margin:2px;
-      font-size:20px; background:rgba(255,255,255,0.2);
-      color:#fff; border:none; border-radius:4px;
+    button {
+      user-select: none;
     }
-    #dpad button:active { background:rgba(255,255,255,0.4); }
   </style>
 </head>
 <body>
+  <canvas id="c"></canvas>
 
-<div id="login">
-  <h2>Enter Name</h2>
-  <input id="username" autofocus />
-  <button onclick="start()">Play</button>
-</div>
+  <!-- Movement D-Pad -->
+  <div style="position:fixed;bottom:20px;left:20px;touch-action:none">
+    <button id="left">⬅️</button>
+    <div>
+      <button id="up">⬆️</button>
+      <button id="down">⬇️</button>
+    </div>
+    <button id="right">➡️</button>
+  </div>
 
-<canvas id="game" width="800" height="600" style="display:none"></canvas>
+  <!-- Interact Button -->
+  <button id="interact" style="
+    position:fixed;
+    bottom:90px;
+    left:110px;
+    width:64px;
+    height:64px;
+    background:rgba(255,255,255,0.2);
+    border:none;
+    border-radius:8px;
+    color:white;
+    font-size:16px;
+    display:none;
+    user-select:none;
+  ">👋</button>
 
-<div id="dpad">
-  <button id="up">↑</button><br/>
-  <button id="left">←</button>
-  <button id="down">↓</button>
-  <button id="right">→</button>
-</div>
+  <script type="module">
+    import * as Y from "https://esm.sh/yjs@13";
+    import { WebrtcProvider } from "https://esm.sh/y-webrtc@10";
+    import { Awareness } from "https://esm.sh/y-protocols/awareness";
 
-<script>
-const canvas = document.getElementById("game");
-const ctx = canvas.getContext("2d");
-const size = 10, speed = 4;
-let socket, username;
-let players = {}, colliding = {};
-let keys = {}, dpad = {};
+    const ydoc = new Y.Doc();
+    const provider = new WebrtcProvider("cool-room", ydoc);
+    const awareness = provider.awareness;
 
-function start() {
-  username = document.getElementById("username").value.trim();
-  if (!username) return alert("Please enter a name");
-  document.getElementById("login").style.display = "none";
-  canvas.style.display = "block";
-  document.getElementById("dpad").style.display = "block";
+    const canvas = document.getElementById("c");
+    const ctx = canvas.getContext("2d");
 
-  const proto = location.protocol === "https:" ? "wss" : "ws";
-  socket = new WebSocket(`${proto}://${location.host}/ws/${username}`);
+    let width = canvas.width = innerWidth;
+    let height = canvas.height = innerHeight;
 
-  socket.onmessage = e => {
-    let msg = JSON.parse(e.data);
-    colliding = msg.colliding || {};
+    let username = localStorage.getItem("name") || prompt("name?");
+    localStorage.setItem("name", username);
+    awareness.setLocalStateField("name", username);
 
-    for (let name in msg.players) {
-      const incoming = msg.players[name];
-      if (!players[name]) {
-        // First time seeing this player
-        players[name] = {
-          x: incoming.x,
-          y: incoming.y,
-          smoothX: incoming.x,
-          smoothY: incoming.y
-        };
-      } else {
-        // Update target position
-        players[name].x = incoming.x;
-        players[name].y = incoming.y;
+    const size = 30;
+    const players = {};
+    const colliding = {};
+
+    const buttons = {
+      up: false,
+      down: false,
+      left: false,
+      right: false
+    };
+
+    let interactPressed = false;
+    let interactCooldown = false;
+
+    const interactBtn = document.getElementById("interact");
+    interactBtn.addEventListener("touchstart", e => {
+      e.preventDefault();
+      if (!interactCooldown) interactPressed = true;
+    });
+
+    function loop() {
+      ctx.clearRect(0, 0, width, height);
+      let me = players[username];
+      if (!me) return requestAnimationFrame(loop);
+
+      // Movement
+      if (buttons.left) me.x -= 1;
+      if (buttons.right) me.x += 1;
+      if (buttons.up) me.y -= 1;
+      if (buttons.down) me.y += 1;
+
+      awareness.setLocalStateField("pos", { x: me.x, y: me.y });
+
+      // Interact logic
+      if (interactPressed && !interactCooldown) {
+        interactPressed = false;
+        interactCooldown = true;
+
+        for (let name in players) {
+          if (name === username) continue;
+          const other = players[name];
+
+          const dx = me.x - other.x;
+          const dy = me.y - other.y;
+          const overlap = Math.abs(dx) < size && Math.abs(dy) < size;
+
+          if (overlap) {
+            other.say = { text: "hi", alpha: 1.0 };
+            break;
+          }
+        }
+
+        setTimeout(() => interactCooldown = false, 500);
       }
-    }
 
-    // Remove players who disconnected
-    for (let name in players) {
-      if (!(name in msg.players)) {
-        delete players[name];
+      // Smoothing & Rendering
+      for (let name in players) {
+        const p = players[name];
+
+        // Smooth movement
+        p.smoothX += (p.x - p.smoothX) * 0.2;
+        p.smoothY += (p.y - p.smoothY) * 0.2;
+
+        // Draw body
+        ctx.fillStyle = colliding[name]
+          ? (name === username ? "#fa0" : "#f00")
+          : (name === username ? "#0f0" : "#0ff");
+        ctx.fillRect(p.smoothX, p.smoothY, size, size);
+
+        // Border
+        ctx.strokeStyle = "#fff";
+        ctx.strokeRect(p.smoothX, p.smoothY, size, size);
+
+        // Name
+        ctx.fillStyle = "#fff";
+        ctx.font = "10px sans-serif";
+        ctx.fillText(name, p.smoothX, p.smoothY - 4);
+
+        // "hi" message
+        if (p.say && p.say.alpha > 0) {
+          ctx.fillStyle = `rgba(255,255,255,${p.say.alpha})`;
+          ctx.font = "12px sans-serif";
+          ctx.fillText(p.say.text, p.smoothX, p.smoothY - 16);
+          p.say.alpha -= 0.02;
+        }
       }
+
+      // Collision detection
+      for (let name in players) colliding[name] = false;
+
+      for (let a in players) {
+        for (let b in players) {
+          if (a === b) continue;
+          const pa = players[a];
+          const pb = players[b];
+          const dx = pa.x - pb.x;
+          const dy = pa.y - pb.y;
+          const overlap = Math.abs(dx) < size && Math.abs(dy) < size;
+          if (overlap) {
+            colliding[a] = colliding[b] = true;
+          }
+        }
+      }
+
+      requestAnimationFrame(loop);
     }
-  };
 
-  requestAnimationFrame(loop);
-}
+    function start() {
+      document.getElementById("interact").style.display = "block";
+      window.addEventListener("keydown", e => {
+        if (e.key === "ArrowUp" || e.key === "w") buttons.up = true;
+        if (e.key === "ArrowDown" || e.key === "s") buttons.down = true;
+        if (e.key === "ArrowLeft" || e.key === "a") buttons.left = true;
+        if (e.key === "ArrowRight" || e.key === "d") buttons.right = true;
+        if (e.key.toLowerCase() === "e" && !interactCooldown) interactPressed = true;
+      });
 
-// Input handling
-window.addEventListener("keydown", e => keys[e.key.toLowerCase()] = true);
-window.addEventListener("keyup",   e => keys[e.key.toLowerCase()] = false);
-window.addEventListener("blur",    _ => keys = {});
-["up","down","left","right"].forEach(dir => {
-  let btn = document.getElementById(dir);
-  dpad[dir] = false;
-  btn.addEventListener("touchstart", e => { e.preventDefault(); dpad[dir] = true; });
-  btn.addEventListener("touchend",   e => { e.preventDefault(); dpad[dir] = false; });
-});
+      window.addEventListener("keyup", e => {
+        if (e.key === "ArrowUp" || e.key === "w") buttons.up = false;
+        if (e.key === "ArrowDown" || e.key === "s") buttons.down = false;
+        if (e.key === "ArrowLeft" || e.key === "a") buttons.left = false;
+        if (e.key === "ArrowRight" || e.key === "d") buttons.right = false;
+      });
 
-function loop() {
-  let dx = 0, dy = 0;
-  if (keys["w"] || dpad["up"])    dy = -1;
-  if (keys["s"] || dpad["down"])  dy = 1;
-  if (keys["a"] || dpad["left"])  dx = -1;
-  if (keys["d"] || dpad["right"]) dx = 1;
-  if (dx && dy) { dx *= 0.7071; dy *= 0.7071; }
+      ["up", "down", "left", "right"].forEach(dir => {
+        const btn = document.getElementById(dir);
+        btn.addEventListener("touchstart", () => buttons[dir] = true);
+        btn.addEventListener("touchend", () => buttons[dir] = false);
+        btn.addEventListener("touchcancel", () => buttons[dir] = false);
+        btn.addEventListener("contextmenu", e => e.preventDefault());
+      });
 
-  let me = players[username];
-  if (me) {
-    let newX = Math.max(0, Math.min(800 - size, me.x + dx * speed));
-    let newY = Math.max(0, Math.min(600 - size, me.y + dy * speed));
-    if (newX !== me.x || newY !== me.y) {
-      socket.send(JSON.stringify({ dx: newX - me.x, dy: newY - me.y }));
-      me.x = newX;
-      me.y = newY;
+      loop();
     }
-  }
 
-  // Smoothly interpolate all players
-  for (let name in players) {
-    const p = players[name];
-    p.smoothX += (p.x - p.smoothX) * 0.2;
-    p.smoothY += (p.y - p.smoothY) * 0.2;
-  }
+    awareness.on("change", () => {
+      const states = awareness.getStates();
+      for (let [id, state] of states) {
+        const name = state.name;
+        const pos = state.pos || { x: 0, y: 0 };
+        if (!players[name]) {
+          players[name] = {
+            x: pos.x,
+            y: pos.y,
+            smoothX: pos.x,
+            smoothY: pos.y,
+            say: null
+          };
+        } else {
+          players[name].x = pos.x;
+          players[name].y = pos.y;
+        }
+      }
+    });
 
-  // Drawing
-  ctx.clearRect(0, 0, 800, 600);
-  for (let name in players) {
-    const p = players[name];
-    const color = colliding[name]
-      ? (name === username ? "#fa0" : "#f00")
-      : (name === username ? "#0f0" : "#0ff");
-    ctx.fillStyle = color;
-    ctx.fillRect(p.smoothX, p.smoothY, size, size);
-    ctx.strokeStyle = "#fff";
-    ctx.strokeRect(p.smoothX, p.smoothY, size, size);
-    ctx.fillStyle = "#fff";
-    ctx.font = "10px sans-serif";
-    ctx.fillText(name, p.smoothX, p.smoothY - 4);
-  }
-
-  requestAnimationFrame(loop);
-}
-</script>
-
+    start();
+  </script>
 </body>
 </html>
