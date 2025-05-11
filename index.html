@@ -108,7 +108,7 @@ function loop() {
     let color = colliding[name]
       ? (name===username ? "#fa0" : "#f00")
       : (name===username ? "#0f0" : "#0ff");
-  
+
     // draw predicted state for self only
     ctx.fillStyle = color;
     ctx.fillRect(p.x, p.y, size, size);
