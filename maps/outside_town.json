@@ -3,13 +3,13 @@
   "spawn": { "x": 400, "y": 580 },
   "portals": [
     {
-      "x1": 780,
+      "x1": 0,
       "y1": 580,
-      "x2": 800,
-      "y2": 620,
+      "x2": 20,
+      "y2": 600,
       "target": "town_square",
       "exitX": 780,
-      "exitY": 300
+      "exitY": 560
     }
   ],
   "buildable": true,

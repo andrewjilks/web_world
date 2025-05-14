@@ -12,6 +12,14 @@
       "exitY": 580
     }
   ],
+  
+  "spawnItems": [
+    { "type": "apple", "x": 150, "y": 150 },
+    { "type": "poison", "x": 170, "y": 150 },
+    { "type": "apple", "x": 350, "y": 250 },
+    { "type": "poison", "x": 370, "y": 250 }
+  ],
+
   "buildable": false,
   "npcs": [],
   "items": []
