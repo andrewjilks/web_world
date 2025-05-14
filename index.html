@@ -74,6 +74,18 @@ function start() {
       currentMap = msg.map;
       return;
     }
+
+    if (msg.type === "teleport") {
+      const me = players[username];
+      if (me) {
+        me.x = msg.x;
+        me.y = msg.y;
+        me.smoothX = msg.x;
+        me.smoothY = msg.y;
+  }
+  return;
+}
+
     if (["pickupResult","dropResult","useResult"].includes(msg.type)) {
       return;
     }

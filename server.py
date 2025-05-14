@@ -64,27 +64,26 @@ async def ws_ws(ws: WebSocket, username: str):
 
             # Movement & portal
             if "dx" in data and "dy" in data:
-                # Apply movement with clamping
                 st["x"] = max(0, min(800 - 10, st["x"] + data["dx"]))
                 st["y"] = max(0, min(600 - 10, st["y"] + data["dy"]))
-
-                # Portal check
                 portal = MAPS[st["map"]]["portal"]
                 if portal["x1"] <= st["x"] <= portal["x2"] and portal["y1"] <= st["y"] <= portal["y2"]:
+                    # warp to spawn of target zone
                     new_map = portal["target"]
-                    old_y = st["y"]  # preserve vertical
                     st["map"] = new_map
-                    # if coming from the right edge, spawn at left edge; vice-versa
-                    if portal["x2"] > portal["x1"]:
-                        # this portal is on the right side of the current map
-                        st["x"] = MAPS[new_map]["portal"]["x1"]
-                    else:
-                        # portal is on the left side
-                        st["x"] = MAPS[new_map]["portal"]["x2"] - size
-                    # clamp Y into new map’s bounds
-                    st["y"] = max(0, min(600 - 10, old_y))
-                    # send new map definition to client
-                    await ws.send_json({"type": "mapData", "map": MAPS[new_map]})
+                    st["x"] = MAPS[new_map]["spawn"]["x"]
+                    st["y"] = MAPS[new_map]["spawn"]["y"]
+                    # notify client to switch map
+                    await ws.send_json({
+                        "type": "mapData",
+                        "map": MAPS[new_map]
+                    })
+                    # immediately teleport the local player
+                    await ws.send_json({
+                        "type": "teleport",
+                        "x": st["x"],
+                        "y": st["y"]
+                    })
 
             # Pickup / Drop toggle
             elif data.get("type") == "pickup":
