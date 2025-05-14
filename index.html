@@ -40,27 +40,21 @@
   <button id="right">→</button>
 
   <button id="interact" style="
-  position:fixed;
-  bottom:90px;
-  left:110px;
-  width:64px;
-  height:64px;
-  background:rgba(255,255,255,0.2);
-  border:none;
-  border-radius:8px;
-  color:white;
-  font-size:16px;
-  display:none;
-  user-select:none;
-">👋</button>
-
+    position:fixed;
+    bottom:90px;
+    left:110px;
+    width:64px; height:64px;
+    background:rgba(255,255,255,0.2);
+    border:none; border-radius:8px;
+    color:white; font-size:16px;
+    display:none; user-select:none;
+  ">👋</button>
 </div>
-
 
 <script>
 const canvas = document.getElementById("game");
-const ctx = canvas.getContext("2d");
-const size = 10, speed = 4;
+const ctx    = canvas.getContext("2d");
+const size   = 10, speed = 4;
 let socket, username;
 let players = {}, colliding = {};
 let keys = {}, dpad = {};
@@ -75,145 +69,161 @@ function start() {
   const proto = location.protocol === "https:" ? "wss" : "ws";
   socket = new WebSocket(`${proto}://${location.host}/ws/${username}`);
 
-  socket.onmessage = e => {
-    let msg = JSON.parse(e.data);
-    colliding = msg.colliding || {};
+  // 1) On open, send our spawn data
+  socket.onopen = () => {
+    socket.send(JSON.stringify({
+      type:      "spawn",
+      inventory: null,
+      health:    100
+    }));
+  };
 
-    for (let name in msg.players) {
-      const incoming = msg.players[name];
-      if (!players[name]) {
-        // First time seeing this player
-        players[name] = {
-          x: incoming.x,
-          y: incoming.y,
-          smoothX: incoming.x,
-          smoothY: incoming.y
-        };
+  // 2) Handle all incoming messages
+  socket.onmessage = e => {
+    const msg = JSON.parse(e.data);
+
+    // 2a) Pickup result
+    if (msg.type === "pickupResult" && msg.player === username) {
+      if (msg.success) {
+        players[username].inventory = msg.item;
+        console.log("Picked up:", msg.item);
       } else {
-        // Update target position
-        players[name].x = incoming.x;
-        players[name].y = incoming.y;
+        console.log("Inventory full; holding:", players[username].inventory);
       }
+      return;
     }
 
-    // Remove players who disconnected
-    for (let name in players) {
-      if (!(name in msg.players)) {
-        delete players[name];
+    // 2b) World update
+    colliding = msg.colliding || {};
+    for (let name in msg.players) {
+      const inc = msg.players[name];
+      if (!players[name]) {
+        players[name] = {
+          x:         inc.x,
+          y:         inc.y,
+          smoothX:   inc.x,
+          smoothY:   inc.y,
+          inventory: inc.inventory ?? null,
+          health:    inc.health    ?? 100
+        };
+      } else {
+        players[name].x         = inc.x;
+        players[name].y         = inc.y;
+        players[name].inventory = inc.inventory ?? players[name].inventory;
+        players[name].health    = inc.health    ?? players[name].health;
       }
+    }
+    // Remove disconnected
+    for (let name in players) {
+      if (!(name in msg.players)) delete players[name];
     }
   };
 
   requestAnimationFrame(loop);
 }
 
-// Input handling
+// Input handling (WASD + D-pad + E for interact/pickup)
 window.addEventListener("keydown", e => {
   keys[e.key.toLowerCase()] = true;
-
-  if (e.key.toLowerCase() === "e") {
-    // Send the interact message when E is pressed
-    sendInteractMessage();
-  }
+  if (e.key.toLowerCase() === "e") sendPickup();
 });
+window.addEventListener("keyup",   e => keys[e.key.toLowerCase()] = false);
+window.addEventListener("blur",    () => keys = {});
 
-window.addEventListener("keyup", e => {
-  keys[e.key.toLowerCase()] = false;
-});
-window.addEventListener("blur", _ => keys = {});
-["up", "down", "left", "right"].forEach(dir => {
-  let btn = document.getElementById(dir);
+["up","down","left","right"].forEach(dir => {
+  const btn = document.getElementById(dir);
   dpad[dir] = false;
   btn.addEventListener("touchstart", e => { e.preventDefault(); dpad[dir] = true; });
-  btn.addEventListener("touchend", e => { e.preventDefault(); dpad[dir] = false; });
+  btn.addEventListener("touchend",   e => { e.preventDefault(); dpad[dir] = false; });
 });
 
-function sendInteractMessage() {
+function sendPickup() {
   if (socket && socket.readyState === WebSocket.OPEN) {
-    socket.send(JSON.stringify({ type: "interact" }));
+    socket.send(JSON.stringify({ type: "pickup" }));
   }
 }
-
-document.getElementById("interact").addEventListener("click", () => {
-  if (socket && socket.readyState === WebSocket.OPEN) {
-    // Send a message indicating the player is interacting
-    socket.send(JSON.stringify({ type: "interact" }));
-
-    console.log("Interact button clicked!");  // Debugging message in console
-  } else {
-    console.log("WebSocket not open or ready!");  // Debugging message in console
-  }
-});
+document.getElementById("interact").addEventListener("click", sendPickup);
 
 function loop() {
-  let dx = 0, dy = 0;
-  if (keys["w"] || dpad["up"])    dy = -1;
-  if (keys["s"] || dpad["down"])  dy = 1;
-  if (keys["a"] || dpad["left"])  dx = -1;
-  if (keys["d"] || dpad["right"]) dx = 1;
-  if (dx && dy) { dx *= 0.7071; dy *= 0.7071; }
+  // 1) Movement
+  let dx=0, dy=0;
+  if (keys["w"] || dpad["up"])    dy=-1;
+  if (keys["s"] || dpad["down"])  dy=1;
+  if (keys["a"] || dpad["left"])  dx=-1;
+  if (keys["d"] || dpad["right"]) dx=1;
+  if (dx&&dy) { dx*=0.7071; dy*=0.7071; }
 
-  let me = players[username];
+  // 2) Send movement to server
+  const me = players[username];
   if (me) {
-    let newX = Math.max(0, Math.min(800 - size, me.x + dx * speed));
-    let newY = Math.max(0, Math.min(600 - size, me.y + dy * speed));
-    if (newX !== me.x || newY !== me.y) {
-      socket.send(JSON.stringify({ dx: newX - me.x, dy: newY - me.y }));
+    const newX = Math.max(0, Math.min(800-size, me.x + dx*speed));
+    const newY = Math.max(0, Math.min(600-size, me.y + dy*speed));
+    if (newX!==me.x || newY!==me.y) {
+      socket.send(JSON.stringify({ dx: newX-me.x, dy: newY-me.y }));
       me.x = newX;
       me.y = newY;
     }
   }
 
-  // Check if the interact button should be shown
-  let interactButton = document.getElementById("interact");
-  let showInteractButton = false;
-
+  // 3) Interact button visibility (when near another)
+  let show = false;
   for (let name in players) {
-    if (name === username) continue;  // Skip the current player
-
-    let otherPlayer = players[name];
-    let distance = Math.sqrt(Math.pow(me.x - otherPlayer.x, 2) + Math.pow(me.y - otherPlayer.y, 2));
-
-    // Show the button if the player is within a certain range (e.g., 50 pixels)
-    if (distance <= 50) {
-      showInteractButton = true;
-      break;  // If any player is within range, no need to check further
-    }
+    if (name===username) continue;
+    const o=players[name];
+    const dist = Math.hypot(me.x-o.x, me.y-o.y);
+    if (dist<=50) { show=true; break; }
   }
+  document.getElementById("interact").style.display = show ? "block" : "none";
 
-  // Toggle visibility of the interact button
-  if (showInteractButton) {
-    interactButton.style.display = "block";
-  } else {
-    interactButton.style.display = "none";
-  }
-
-  // Smoothly interpolate all players
+  // 4) Smooth positions
   for (let name in players) {
     const p = players[name];
-    p.smoothX += (p.x - p.smoothX) * 0.2;
-    p.smoothY += (p.y - p.smoothY) * 0.2;
+    p.smoothX += (p.x - p.smoothX)*0.2;
+    p.smoothY += (p.y - p.smoothY)*0.2;
   }
 
-  // Drawing
-  ctx.clearRect(0, 0, 800, 600);
+  // 5) Draw
+  ctx.clearRect(0,0,800,600);
   for (let name in players) {
     const p = players[name];
-    const color = colliding[name]
-      ? (name === username ? "#fa0" : "#f00")
-      : (name === username ? "#0f0" : "#0ff");
-    ctx.fillStyle = color;
+    const col = colliding[name]
+      ? (name===username ? "#fa0" : "#f00")
+      : (name===username ? "#0f0" : "#0ff");
+    // Player square
+    ctx.fillStyle   = col;
     ctx.fillRect(p.smoothX, p.smoothY, size, size);
     ctx.strokeStyle = "#fff";
     ctx.strokeRect(p.smoothX, p.smoothY, size, size);
+    // Name
     ctx.fillStyle = "#fff";
-    ctx.font = "10px sans-serif";
+    ctx.font      = "10px sans-serif";
     ctx.fillText(name, p.smoothX, p.smoothY - 4);
+    // Health bar
+    const barW = size, barH = 4;
+    ctx.fillStyle = "#f00";
+    ctx.fillRect(
+      p.smoothX,
+      p.smoothY - barH - 2,
+      barW * (p.health/100),
+      barH
+    );
+    ctx.strokeStyle = "#fff";
+    ctx.strokeRect(
+      p.smoothX,
+      p.smoothY - barH - 2,
+      barW,
+      barH
+    );
+    // Inventory icon (if any)
+    if (p.inventory) {
+      ctx.fillStyle = "#ff0";
+      ctx.fillRect(p.smoothX + size + 2, p.smoothY, 6, 6);
+      // (You can replace this with a sprite or text label)
+    }
   }
 
   requestAnimationFrame(loop);
 }
 </script>
-
 </body>
 </html>

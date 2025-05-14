@@ -1,0 +1,2 @@
+npc1 greeter:
+    when interacted: say hi
