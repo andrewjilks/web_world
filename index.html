@@ -50,10 +50,10 @@
 <script>
 const canvas = document.getElementById("game");
 const ctx    = canvas.getContext("2d");
-const size   = 10, speed = 4;
+const size   = 3, speed = 2;
 let socket, username;
 let players = {}, colliding = {}, groundItems = {};
-let currentMap = { name: "zone1" };
+let currentMap = { name: "graveyard" };
 let keys = {}, dpad = {};
 
 function start() {

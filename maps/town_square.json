@@ -1,0 +1,17 @@
+{
+  "name": "town_square",
+  "spawn": { "x": 400, "y": 300 },
+  "portal": {
+    "x1": 0,
+    "y1": 280,
+    "x2": 20,
+    "y2": 320,
+    "target": "outside_town"
+  },
+  "buildable": false,
+  "npcs": [
+    { "type": "banker", "x": 200, "y": 350 },
+    { "type": "merchant", "x": 600, "y": 350 }
+  ],
+  "items": []
+}
