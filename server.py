@@ -14,33 +14,30 @@ ground_items: dict[str, dict[str, dict]] = {}
 MAPS: dict[str, dict] = {}
 
 def load_maps():
-    """Load all JSON maps and init an empty ground_items bucket for each."""
+    """Load all JSON maps, init ground_items, and spawn any predefined items."""
     for fn in os.listdir("maps"):
         if not fn.endswith(".json"):
             continue
         path = os.path.join("maps", fn)
         with open(path, encoding="utf-8") as f:
             data = json.load(f)
+
         name = data["name"]
         MAPS[name] = data
         ground_items[name] = {}
 
-def spawn_items_to_map(map_name: str, positions: list[tuple[int,int]], kinds: list[str]):
-    """Spawn specified kinds at each (x,y) in the given map."""
-    for x, y in positions:
-        for kind in kinds:
+        # If the map JSON defines spawnItems, place them now
+        for entry in data.get("spawnItems", []):
             iid = str(uuid.uuid4())
-            ground_items[map_name][iid] = {
-                "type": kind,
-                "x": x + (0 if kind == "apple" else 20),
-                "y": y
+            ground_items[name][iid] = {
+                "type": entry["type"],
+                "x": entry["x"],
+                "y": entry["y"]
             }
 
 @app.on_event("startup")
 async def on_startup():
     load_maps()
-    # Initial item spawn in graveyard
-    spawn_items_to_map("graveyard", [(150,150), (350,250), (550,350)], ["apple", "poison"])
     asyncio.create_task(broadcast_loop())
 
 @app.get("/")
@@ -53,7 +50,6 @@ async def ws_ws(ws: WebSocket, username: str):
     await ws.accept()
     clients[ws] = username
 
-    # New player initialization
     if username not in world_state:
         world_state[username] = {
             "map": "graveyard",
@@ -63,7 +59,6 @@ async def ws_ws(ws: WebSocket, username: str):
             "health": 100
         }
 
-    # Send initial map
     await ws.send_json({
         "type": "mapData",
         "map": MAPS[world_state[username]["map"]]
@@ -74,22 +69,20 @@ async def ws_ws(ws: WebSocket, username: str):
             data = await ws.receive_json()
             st = world_state[username]
 
-            # Movement
+            # Movement and portals
             if "dx" in data and "dy" in data:
                 st["x"] = max(0, min(800 - 10, st["x"] + data["dx"]))
                 st["y"] = max(0, min(600 - 10, st["y"] + data["dy"]))
 
-                # Check portals
                 now = time.time()
                 if now >= st.get("portal_cooldown", 0):
                     for p in MAPS[st["map"]].get("portals", []):
                         if p["x1"] <= st["x"] <= p["x2"] and p["y1"] <= st["y"] <= p["y2"]:
-                            # Teleport
                             st["map"] = p["target"]
                             st["x"], st["y"] = p["exitX"], p["exitY"]
                             st["portal_cooldown"] = now + 0.25
                             await ws.send_json({"type":"mapData", "map": MAPS[st["map"]]})
-                            await ws.send_json({"type":"teleport", "x": st["x"], "y": st["y"]})
+                            await ws.send_json({"type":"teleport","x":st["x"],"y":st["y"]})
                             break
 
             # Pickup / Drop
@@ -105,7 +98,7 @@ async def ws_ws(ws: WebSocket, username: str):
                     st["inventory"] = None
                     await ws.send_json({"type":"dropResult","success":True})
                 else:
-                    # Pickup nearest
+                    # Pick up nearest
                     nearest, nd = None, float("inf")
                     for iid, itm in ground_items[st["map"]].items():
                         d = abs(itm["x"] - st["x"]) + abs(itm["y"] - st["y"])
@@ -136,7 +129,7 @@ async def broadcast_loop():
     while True:
         colliding: dict[str, bool] = {}
         names = list(world_state)
-        # Collision detection
+        # collision detection
         for i in range(len(names)):
             for j in range(i + 1, len(names)):
                 a, b = names[i], names[j]
@@ -147,7 +140,7 @@ async def broadcast_loop():
                 if abs(ax - bx) < size and abs(ay - by) < size:
                     colliding[a] = colliding[b] = True
 
-        # Group by map
+        # send updates
         by_map: dict[str, dict] = {}
         for name, st in world_state.items():
             by_map.setdefault(st["map"], {})[name] = st
