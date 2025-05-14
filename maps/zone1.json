@@ -1,9 +1,9 @@
 {
-  "name": "zone2",
+  "name": "zone1",
   "spawn": { "x": 10, "y": 300 },
   "portal": {
     "x1": 0, "y1": 0,
     "x2": 10, "y2": 600,
-    "target": "zone1"
+    "target": "zone2"
   }
 }
