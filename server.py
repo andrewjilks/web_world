@@ -9,11 +9,7 @@ app = FastAPI()
 
 clients: dict[WebSocket, str] = {}
 world_state: dict[str, dict] = {}
-# Now track ground items per map
-ground_items: dict[str, dict[str, dict]] = {
-    "zone1": {},
-    "zone2": {}
-}
+ground_items: dict[str, dict[str, dict]] = {"zone1": {}, "zone2": {}}
 MAPS: dict[str, dict] = {}
 
 def load_maps():
@@ -59,7 +55,6 @@ async def ws_ws(ws: WebSocket, username: str):
             "health": 100
         }
 
-    # send initial mapData
     await ws.send_json({"type": "mapData", "map": MAPS[world_state[username]["map"]]})
 
     try:
@@ -67,11 +62,10 @@ async def ws_ws(ws: WebSocket, username: str):
             data = await ws.receive_json()
             st = world_state[username]
 
-            # Movement
+            # Movement & portal
             if "dx" in data and "dy" in data:
                 st["x"] = max(0, min(800 - 10, st["x"] + data["dx"]))
                 st["y"] = max(0, min(600 - 10, st["y"] + data["dy"]))
-                # Portal?
                 portal = MAPS[st["map"]]["portal"]
                 if portal["x1"] <= st["x"] <= portal["x2"] and portal["y1"] <= st["y"] <= portal["y2"]:
                     new_map = portal["target"]
@@ -81,17 +75,15 @@ async def ws_ws(ws: WebSocket, username: str):
 
             # Pickup / Drop toggle
             elif data.get("type") == "pickup":
-                # DROP if holding
                 if st["inventory"]:
+                    # Drop into current map
                     obj = st["inventory"]
                     iid = str(uuid.uuid4())
-                    ground_items[st["map"]][iid] = {
-                        "type": obj["type"], "x": st["x"], "y": st["y"]
-                    }
+                    ground_items[st["map"]][iid] = {"type": obj["type"], "x": st["x"], "y": st["y"]}
                     st["inventory"] = None
                     await ws.send_json({"type": "dropResult", "success": True})
                 else:
-                    # PICK nearest in current map
+                    # Pick nearest in current map
                     nearest, nd = None, float("inf")
                     for iid, itm in ground_items[st["map"]].items():
                         d = abs(itm["x"] - st["x"]) + abs(itm["y"] - st["y"])
@@ -118,7 +110,6 @@ async def ws_ws(ws: WebSocket, username: str):
         clients.pop(ws, None)
         world_state.pop(username, None)
 
-
 async def broadcast_loop():
     size = 10
     while True:
@@ -134,7 +125,6 @@ async def broadcast_loop():
                 if abs(ax - bx) < size and abs(ay - by) < size:
                     colliding[a] = colliding[b] = True
 
-        # Group by map
         by_map: dict[str, dict] = {}
         for name, st in world_state.items():
             by_map.setdefault(st["map"], {})[name] = st
@@ -147,7 +137,6 @@ async def broadcast_loop():
             payload = {
                 "players":   by_map.get(m, {}),
                 "colliding": {n: True for n in colliding if world_state[n]["map"] == m},
-                # send only items for this map
                 "groundItems": ground_items[m]
             }
             try:

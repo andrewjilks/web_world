@@ -7,12 +7,12 @@
     body { margin:0; background:#222; overflow:hidden; }
     canvas { display:block; }
     #login { position:absolute; top:50%; left:50%;
-      transform:translate(-50%,-50%); color:#fff; text-align:center;}
+      transform:translate(-50%,-50%); color:#fff; text-align:center; }
     #dpad { position:fixed; bottom:20px; left:20px;
-      display:none; user-select:none;}
+      display:none; user-select:none; }
     #dpad button { width:48px; height:48px; margin:2px;
       font-size:20px; background:rgba(255,255,255,0.2);
-      color:#fff; border:none; border-radius:4px;}
+      color:#fff; border:none; border-radius:4px; }
     #dpad button:active { background:rgba(255,255,255,0.4); }
   </style>
 </head>
@@ -155,13 +155,13 @@ function loop(){
     }
   }
 
-  // Show interact for pickup OR drop
+  // Show interact when holding OR near any ground item in current map
   const nearItem = me && Object.values(groundItems).some(it =>
     Math.hypot(it.x-me.x, it.y-me.y)<=30
   );
-  const showInteract = me && (me.inventory || (currentMap.name==="zone1" && nearItem));
+  const showInteract = me && (me.inventory || nearItem);
   document.getElementById("interact").style.display = showInteract ? "block" : "none";
-  document.getElementById("use").      style.display = me && me.inventory ? "block" : "none";
+  document.getElementById("use").style.display      = me && me.inventory ? "block" : "none";
 
   // Smooth
   for (let n in players){
@@ -174,18 +174,16 @@ function loop(){
   ctx.fillStyle = currentMap.name==="zone1" ? "#223" : "#332";
   ctx.fillRect(0,0,800,600);
 
-  // Items
-  if (currentMap.name==="zone1"){
-    for (let id in groundItems){
-      const it=groundItems[id];
-      ctx.fillStyle = it.type==="apple" ? "#0f0" : "#f0f";
-      ctx.fillRect(it.x, it.y, 8,8);
-      ctx.strokeStyle="#fff";
-      ctx.strokeRect(it.x, it.y, 8,8);
-    }
+  // Draw ground items in **every** map
+  for (let id in groundItems){
+    const it = groundItems[id];
+    ctx.fillStyle = it.type==="apple" ? "#0f0" : "#f0f";
+    ctx.fillRect(it.x, it.y, 8,8);
+    ctx.strokeStyle="#fff";
+    ctx.strokeRect(it.x, it.y, 8,8);
   }
 
-  // Players
+  // Draw players on this map
   for (let n in players){
     const p = players[n];
     if (p.map!==currentMap.name) continue;
@@ -199,13 +197,11 @@ function loop(){
     ctx.fillStyle="#fff";
     ctx.font="10px sans-serif";
     ctx.fillText(n, p.smoothX, p.smoothY-4);
-    // health
     const barW=size, barH=4;
     ctx.fillStyle="#f00";
     ctx.fillRect(p.smoothX, p.smoothY-barH-2, barW*(p.health/100), barH);
     ctx.strokeStyle="#fff";
     ctx.strokeRect(p.smoothX, p.smoothY-barH-2, barW, barH);
-    // inventory icon
     if(p.inventory){
       ctx.fillStyle="#ff0";
       ctx.fillRect(p.smoothX+size+2, p.smoothY, 6,6);
