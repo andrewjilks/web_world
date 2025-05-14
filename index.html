@@ -2,18 +2,23 @@
 <html>
 <head>
   <meta charset="utf-8" />
-  <title>Multiplayer Pixels</title>
+  <title>Multiplayer Zones</title>
   <style>
     body { margin:0; background:#222; overflow:hidden; }
     canvas { display:block; }
-    #login { position:absolute; top:50%;left:50%;
-      transform:translate(-50%,-50%); color:#fff; text-align:center;}
-    #dpad { position:fixed; bottom:20px; left:20px;
-      display:none; user-select:none;}
+    #login {
+      position:absolute; top:50%; left:50%;
+      transform:translate(-50%,-50%);
+      color:#fff; text-align:center;
+    }
+    #dpad {
+      position:fixed; bottom:20px; left:20px;
+      display:none; user-select:none;
+    }
     #dpad button {
-      width:48px;height:48px;margin:2px;
-      font-size:20px;background:rgba(255,255,255,0.2);
-      color:#fff;border:none;border-radius:4px;
+      width:48px; height:48px; margin:2px;
+      font-size:20px; background:rgba(255,255,255,0.2);
+      color:#fff; border:none; border-radius:4px;
     }
     #dpad button:active { background:rgba(255,255,255,0.4); }
   </style>
@@ -35,17 +40,17 @@
   <button id="right">→</button>
   <button id="interact" style="
     position:fixed; bottom:90px; left:110px;
-    width:64px;height:64px;
+    width:64px; height:64px;
     background:rgba(255,255,255,0.2); border:none;
-    border-radius:8px;color:white;font-size:16px;
-    display:none;user-select:none;
+    border-radius:8px; color:white; font-size:16px;
+    display:none; user-select:none;
   ">👋</button>
   <button id="use" style="
     position:fixed; bottom:90px; left:200px;
-    width:64px;height:64px;
+    width:64px; height:64px;
     background:rgba(255,255,255,0.2); border:none;
-    border-radius:8px;color:white;font-size:16px;
-    display:none;user-select:none;
+    border-radius:8px; color:white; font-size:16px;
+    display:none; user-select:none;
   ">🍎</button>
 </div>
 
@@ -55,105 +60,114 @@ const ctx    = canvas.getContext("2d");
 const size   = 10, speed = 4;
 let socket, username;
 let players = {}, colliding = {}, groundItems = {};
-
+let currentMap = null;
 let keys = {}, dpad = {};
 
 function start() {
   username = document.getElementById("username").value.trim();
   if (!username) return alert("Enter a name");
-  document.getElementById("login").style.display="none";
-  canvas.style.display="block";
-  document.getElementById("dpad").style.display="block";
+  document.getElementById("login").style.display = "none";
+  canvas.style.display = "block";
+  document.getElementById("dpad").style.display = "block";
 
-  const proto = location.protocol==="https:"?"wss":"ws";
+  const proto = location.protocol === "https:" ? "wss" : "ws";
   socket = new WebSocket(`${proto}://${location.host}/ws/${username}`);
 
   socket.onmessage = e => {
     const msg = JSON.parse(e.data);
 
-    // Responses to pickup/use (optional handling)
-    if (msg.type==="pickupResult") {
-      if (!msg.success) console.log("No item to pick up");
-      return;
-    }
-    if (msg.type==="dropResult") {
-      return;
-    }
-    if (msg.type==="useResult") {
-      console.log("New health:", msg.health);
+    // Map change message
+    if (msg.type === "mapData") {
+      currentMap = msg.map;
       return;
     }
 
+    // Pickup/Drop/Use results (optional logging)
+    if (msg.type === "pickupResult") return;
+    if (msg.type === "dropResult") return;
+    if (msg.type === "useResult") return;
+
     // Regular world update
-    colliding    = msg.colliding;
-    groundItems  = msg.groundItems;
+    colliding   = msg.colliding || {};
+    groundItems = msg.groundItems || {};
     for (let name in msg.players) {
       const inc = msg.players[name];
       if (!players[name]) {
         players[name] = {
-          x:inc.x, y:inc.y,
-          smoothX:inc.x, smoothY:inc.y,
+          x: inc.x,
+          y: inc.y,
+          smoothX: inc.x,
+          smoothY: inc.y,
+          map: inc.map,
           inventory: inc.inventory,
           health: inc.health
         };
       } else {
         Object.assign(players[name], {
-          x:inc.x, y:inc.y,
+          x: inc.x,
+          y: inc.y,
+          map: inc.map,
           inventory: inc.inventory,
           health: inc.health
         });
       }
     }
     // Remove disconnected
-    for (let n in players) if (!msg.players[n]) delete players[n];
+    for (let n in players) {
+      if (!msg.players[n]) delete players[n];
+    }
   };
 
   requestAnimationFrame(loop);
 }
 
-// Input
-window.addEventListener("keydown", e=>{
+// Input handlers
+window.addEventListener("keydown", e => {
   keys[e.key.toLowerCase()] = true;
-  if (e.key.toLowerCase()==="e") sendPickup();
-  if (e.key.toLowerCase()==="u") sendUse();
+  if (e.key.toLowerCase() === "e") sendPickup();
+  if (e.key.toLowerCase() === "u") sendUse();
 });
-window.addEventListener("keyup", e=>keys[e.key.toLowerCase()]=false);
-window.addEventListener("blur", ()=>keys={});
+window.addEventListener("keyup", e => keys[e.key.toLowerCase()] = false);
+window.addEventListener("blur", () => keys = {});
 
-["up","down","left","right"].forEach(dir=>{
-  const btn=document.getElementById(dir);
-  dpad[dir]=false;
-  btn.addEventListener("touchstart",e=>{e.preventDefault();dpad[dir]=true});
-  btn.addEventListener("touchend",  e=>{e.preventDefault();dpad[dir]=false});
+["up","down","left","right"].forEach(dir => {
+  const btn = document.getElementById(dir);
+  dpad[dir] = false;
+  btn.addEventListener("touchstart", e => { e.preventDefault(); dpad[dir] = true; });
+  btn.addEventListener("touchend",   e => { e.preventDefault(); dpad[dir] = false; });
 });
 
 document.getElementById("interact").addEventListener("click", sendPickup);
 document.getElementById("use").addEventListener("click", sendUse);
 
-function sendPickup(){
-  if (socket.readyState===WebSocket.OPEN)
-    socket.send(JSON.stringify({type:"pickup"}));
+function sendPickup() {
+  if (socket.readyState === WebSocket.OPEN) {
+    socket.send(JSON.stringify({ type: "pickup" }));
+  }
 }
-function sendUse(){
-  if (socket.readyState===WebSocket.OPEN)
-    socket.send(JSON.stringify({type:"use"}));
+function sendUse() {
+  if (socket.readyState === WebSocket.OPEN) {
+    socket.send(JSON.stringify({ type: "use" }));
+  }
 }
 
-function loop(){
+function loop() {
+  if (!currentMap) return requestAnimationFrame(loop);
+
   // Movement
-  let dx=0,dy=0;
-  if (keys["w"]||dpad["up"]) dy=-1;
-  if (keys["s"]||dpad["down"]) dy=1;
-  if (keys["a"]||dpad["left"]) dx=-1;
-  if (keys["d"]||dpad["right"]) dx=1;
-  if (dx&&dy){dx*=0.7071;dy*=0.7071;}
-  const me=players[username];
-  if(me){
-    const nx=Math.max(0,Math.min(800-size,me.x+dx*speed));
-    const ny=Math.max(0,Math.min(600-size,me.y+dy*speed));
-    if(nx!==me.x||ny!==me.y){
-      socket.send(JSON.stringify({dx:nx-me.x,dy:ny-me.y}));
-      me.x=nx;me.y=ny;
+  let dx = 0, dy = 0;
+  if (keys["w"] || dpad["up"])    dy = -1;
+  if (keys["s"] || dpad["down"])  dy =  1;
+  if (keys["a"] || dpad["left"])  dx = -1;
+  if (keys["d"] || dpad["right"]) dx =  1;
+  if (dx && dy) { dx *= 0.7071; dy *= 0.7071; }
+  const me = players[username];
+  if (me) {
+    const nx = Math.max(0, Math.min(800 - size, me.x + dx * speed));
+    const ny = Math.max(0, Math.min(600 - size, me.y + dy * speed));
+    if (nx !== me.x || ny !== me.y) {
+      socket.send(JSON.stringify({ dx: nx - me.x, dy: ny - me.y }));
+      me.x = nx; me.y = ny;
     }
   }
 
@@ -161,59 +175,57 @@ function loop(){
   const nearItem = Object.values(groundItems).some(it =>
     Math.hypot(it.x - me.x, it.y - me.y) <= 30
   );
-  document.getElementById("interact").style.display = nearItem ? "block":"none";
-  document.getElementById("use").style.display = me && me.inventory ? "block":"none";
+  document.getElementById("interact").style.display = (currentMap.name === "zone1" && nearItem) ? "block" : "none";
+  document.getElementById("use").style.display = me && me.inventory ? "block" : "none";
 
-  // Smooth
-  for(let n in players){
-    const p=players[n];
-    p.smoothX += (p.x-p.smoothX)*0.2;
-    p.smoothY += (p.y-p.smoothY)*0.2;
+  // Smooth interpolation
+  for (let name in players) {
+    const p = players[name];
+    p.smoothX += (p.x - p.smoothX) * 0.2;
+    p.smoothY += (p.y - p.smoothY) * 0.2;
   }
 
-  // Draw
-  ctx.clearRect(0,0,800,600);
-  // Ground items
-  for(let id in groundItems){
-    const it=groundItems[id];
-    ctx.fillStyle = it.type==="apple" ? "#0f0" : "#f0f";
-    ctx.fillRect(it.x, it.y, 8,8);
-    ctx.strokeStyle="#fff";
-    ctx.strokeRect(it.x, it.y,8,8);
+  // Draw background for each zone
+  ctx.fillStyle = currentMap.name === "zone1" ? "#223" : "#332";
+  ctx.fillRect(0, 0, 800, 600);
+
+  // Draw ground items only in zone1
+  if (currentMap.name === "zone1") {
+    for (let id in groundItems) {
+      const it = groundItems[id];
+      ctx.fillStyle = it.type === "apple" ? "#0f0" : "#f0f";
+      ctx.fillRect(it.x, it.y, 8, 8);
+      ctx.strokeStyle = "#fff";
+      ctx.strokeRect(it.x, it.y, 8, 8);
+    }
   }
-  // Players
-  for(let name in players){
-    const p=players[name];
+
+  // Draw players on this map
+  for (let name in players) {
+    const p = players[name];
+    if (p.map !== currentMap.name) continue;
     const col = colliding[name]
-      ? (name===username?"#fa0":"#f00")
-      : (name===username?"#0f0":"#0ff");
-    ctx.fillStyle=col;
-    ctx.fillRect(p.smoothX,p.smoothY,size,size);
-    ctx.strokeStyle="#fff";
-    ctx.strokeRect(p.smoothX,p.smoothY,size,size);
+      ? (name === username ? "#fa0" : "#f00")
+      : (name === username ? "#0f0" : "#0ff");
+    // Square
+    ctx.fillStyle = col;
+    ctx.fillRect(p.smoothX, p.smoothY, size, size);
+    ctx.strokeStyle = "#fff";
+    ctx.strokeRect(p.smoothX, p.smoothY, size, size);
     // Name
-    ctx.fillStyle="#fff";
-    ctx.font="10px sans-serif";
-    ctx.fillText(name, p.smoothX, p.smoothY-4);
+    ctx.fillStyle = "#fff";
+    ctx.font = "10px sans-serif";
+    ctx.fillText(name, p.smoothX, p.smoothY - 4);
     // Health bar
-    const barW=size, barH=4;
-    ctx.fillStyle="#f00";
-    ctx.fillRect(
-      p.smoothX,
-      p.smoothY-barH-2,
-      barW*(p.health/100),
-      barH
-    );
-    ctx.strokeStyle="#fff";
-    ctx.strokeRect(
-      p.smoothX,
-      p.smoothY-barH-2,
-      barW,barH
-    );
+    const barW = size, barH = 4;
+    ctx.fillStyle = "#f00";
+    ctx.fillRect(p.smoothX, p.smoothY - barH - 2, barW * (p.health / 100), barH);
+    ctx.strokeStyle = "#fff";
+    ctx.strokeRect(p.smoothX, p.smoothY - barH - 2, barW, barH);
     // Inventory icon
-    if(p.inventory){
-      ctx.fillStyle="#ff0";
-      ctx.fillRect(p.smoothX+size+2, p.smoothY, 6,6);
+    if (p.inventory) {
+      ctx.fillStyle = "#ff0";
+      ctx.fillRect(p.smoothX + size + 2, p.smoothY, 6, 6);
     }
   }
 
