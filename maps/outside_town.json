@@ -1,13 +1,17 @@
 {
   "name": "outside_town",
   "spawn": { "x": 400, "y": 580 },
-  "portal": {
-    "x1": 780,
-    "y1": 580,
-    "x2": 800,
-    "y2": 620,
-    "target": "town_square"
-  },
+  "portals": [
+    {
+      "x1": 780,
+      "y1": 580,
+      "x2": 800,
+      "y2": 620,
+      "target": "town_square",
+      "exitX": 780,
+      "exitY": 300
+    }
+  ],
   "buildable": true,
   "npcs": [],
   "items": []

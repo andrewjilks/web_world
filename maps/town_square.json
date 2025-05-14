@@ -1,13 +1,26 @@
 {
   "name": "town_square",
   "spawn": { "x": 400, "y": 300 },
-  "portal": {
-    "x1": 0,
-    "y1": 280,
-    "x2": 20,
-    "y2": 320,
-    "target": "outside_town"
-  },
+  "portals": [
+    {
+      "x1": 0,
+      "y1": 280,
+      "x2": 20,
+      "y2": 320,
+      "target": "graveyard",
+      "exitX": 400,
+      "exitY": 20
+    },
+    {
+      "x1": 780,
+      "y1": 280,
+      "x2": 800,
+      "y2": 320,
+      "target": "outside_town",
+      "exitX": 20,
+      "exitY": 580
+    }
+  ],
   "buildable": false,
   "npcs": [
     { "type": "banker", "x": 200, "y": 350 },

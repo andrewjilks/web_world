@@ -1,13 +1,17 @@
 {
   "name": "graveyard",
   "spawn": { "x": 100, "y": 100 },
-  "portal": {
-    "x1": 380,
-    "y1": 0,
-    "x2": 420,
-    "y2": 20,
-    "target": "town_square"
-  },
+  "portals": [
+    {
+      "x1": 380,
+      "y1": 0,
+      "x2": 420,
+      "y2": 20,
+      "target": "town_square",
+      "exitX": 400,
+      "exitY": 580
+    }
+  ],
   "buildable": false,
   "npcs": [],
   "items": []
