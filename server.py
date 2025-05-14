@@ -4,6 +4,7 @@ import asyncio
 import uuid
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect
 from fastapi.responses import HTMLResponse
+import time
 
 app = FastAPI()
 
@@ -67,34 +68,30 @@ async def ws_ws(ws: WebSocket, username: str):
                 st["x"] = max(0, min(800 - 10, st["x"] + data["dx"]))
                 st["y"] = max(0, min(600 - 10, st["y"] + data["dy"]))
 
-                portal = MAPS[st["map"]]["portal"]
-                if portal["x1"] <= st["x"] <= portal["x2"] and portal["y1"] <= st["y"] <= portal["y2"]:
-                    # Determine destination
-                    new_map = portal["target"]
-                    new_portal = MAPS[new_map]["portal"]
+                now = time.time()
+                if "portal_cooldown" not in st:
+                    st["portal_cooldown"] = 0
 
-                    # Preserve Y
-                    old_y = st["y"]
+                if now >= st["portal_cooldown"]:
+                    portal = MAPS[st["map"]]["portal"]
+                    if portal["x1"] <= st["x"] <= portal["x2"] and portal["y1"] <= st["y"] <= portal["y2"]:
+                        new_map = portal["target"]
+                        new_portal = MAPS[new_map]["portal"]
 
-                    # Warp to opposite portal edge:
-                    # If we came through a right-side portal (x near portal.x2),
-                    # land at left edge of new map (x = new_portal.x1)
-                    # Else (left-side portal), land at right edge (x = new_portal.x2 - size)
-                    midpoint = (portal["x1"] + portal["x2"]) / 2
-                    if st["x"] > midpoint:
-                        # exited on right
-                        st["x"] = new_portal["x1"] + 100
-                    else:
-                        # exited on left
-                        st["x"] = new_portal["x2"] - 100
+                        # Determine exit side
+                        midpoint = (portal["x1"] + portal["x2"]) / 2
+                        if st["x"] > midpoint:
+                            st["x"] = new_portal["x1"] + 20
+                        else:
+                            st["x"] = new_portal["x2"] - 20
 
-                    # Clamp Y into bounds
-                    st["y"] = max(0, min(600 - 10, old_y))
-                    st["map"] = new_map
+                        # Do not lock Y
+                        st["map"] = new_map
+                        st["portal_cooldown"] = now + 0.25  # 250 ms cooldown
 
-                    # Inform client of new map and teleport
-                    await ws.send_json({"type": "mapData", "map": MAPS[new_map]})
-                    await ws.send_json({"type": "teleport", "x": st["x"], "y": st["y"]})
+                        await ws.send_json({"type": "mapData", "map": MAPS[new_map]})
+                        await ws.send_json({"type": "teleport", "x": st["x"], "y": st["y"]})
+
 
             # Pickup / Drop toggle
             elif data.get("type") == "pickup":
