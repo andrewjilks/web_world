@@ -151,10 +151,10 @@ function sendUse(){
 
 function loop(){
   let dx=0, dy=0;
-  if (keys["w"]||dpad["up"])    dy=-.1;
-  if (keys["s"]||dpad["down"])  dy= .1;
-  if (keys["a"]||dpad["left"])  dx=-.1;
-  if (keys["d"]||dpad["right"]) dx= .1;
+  if (keys["w"]||dpad["up"])    dy=-1;
+  if (keys["s"]||dpad["down"])  dy= 1;
+  if (keys["a"]||dpad["left"])  dx=-1;
+  if (keys["d"]||dpad["right"]) dx= 1;
   if (dx&&dy){ dx*=0.7071; dy*=0.7071; }
 
   const me = players[username];
