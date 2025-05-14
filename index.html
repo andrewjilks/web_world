@@ -91,18 +91,14 @@ function start() {
       currentMap = msg.map;
       return;
     }
-
     if (msg.type === "teleport") {
       const me = players[username];
       if (me) {
-        me.x = msg.x;
-        me.y = msg.y;
-        me.smoothX = msg.x;
-        me.smoothY = msg.y;
+        me.x = msg.x; me.y = msg.y;
+        me.smoothX = msg.x; me.smoothY = msg.y;
       }
       return;
     }
-
     if (["pickupResult","dropResult","useResult"].includes(msg.type)) {
       return;
     }
@@ -167,6 +163,7 @@ function sendUse() {
 }
 
 function loop() {
+  // --- Movement ---
   let dx = 0, dy = 0;
   if (keys["w"] || dpad["up"])    dy = -1;
   if (keys["s"] || dpad["down"])  dy =  1;
@@ -184,21 +181,21 @@ function loop() {
     }
   }
 
-  // Show interact/use buttons
-  const isNearItem = me && Object.values(groundItems).some(it =>
+  // --- UI Buttons ---
+  const nearItem = me && Object.values(groundItems).some(it =>
     Math.hypot(it.x - me.x, it.y - me.y) <= 30
   );
-  document.getElementById("interact").style.display = (me && (me.inventory || isNearItem)) ? "block" : "none";
-  document.getElementById("use").style.display      = (me && me.inventory) ? "block" : "none";
+  document.getElementById("interact").style.display = (me && (me.inventory || nearItem)) ? "block" : "none";
+  document.getElementById("use").style.display = (me && me.inventory) ? "block" : "none";
 
-  // Smooth movement interpolation
+  // --- Smooth interpolation ---
   for (let n in players) {
     const p = players[n];
     p.smoothX += (p.x - p.smoothX) * 0.2;
     p.smoothY += (p.y - p.smoothY) * 0.2;
   }
 
-  // Background color per map
+  // --- Background per map ---
   if (currentMap.name === "graveyard") {
     ctx.fillStyle = "#223";
   } else if (currentMap.name === "town_square") {
@@ -208,7 +205,15 @@ function loop() {
   }
   ctx.fillRect(0, 0, 800, 600);
 
-  // Draw ground items
+  // --- Draw portal outline ---
+  if (currentMap.portal) {
+    const p = currentMap.portal;
+    ctx.strokeStyle = "#ff0";
+    ctx.lineWidth = 2;
+    ctx.strokeRect(p.x1, p.y1, p.x2 - p.x1, p.y2 - p.y1);
+  }
+
+  // --- Draw ground items ---
   for (let id in groundItems) {
     const it = groundItems[id];
     ctx.fillStyle = it.type === "apple" ? "#0f0" : "#f0f";
@@ -217,7 +222,7 @@ function loop() {
     ctx.strokeRect(it.x, it.y, 8, 8);
   }
 
-  // Draw players
+  // --- Draw players ---
   for (let n in players) {
     const p = players[n];
     if (p.map !== currentMap.name) continue;
