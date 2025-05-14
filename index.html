@@ -7,12 +7,12 @@
     body { margin:0; background:#222; overflow:hidden; }
     canvas { display:block; }
     #login { position:absolute; top:50%; left:50%;
-      transform:translate(-50%,-50%); color:#fff; text-align:center; }
+      transform:translate(-50%,-50%); color:#fff; text-align:center;}
     #dpad { position:fixed; bottom:20px; left:20px;
-      display:none; user-select:none; }
+      display:none; user-select:none;}
     #dpad button { width:48px; height:48px; margin:2px;
       font-size:20px; background:rgba(255,255,255,0.2);
-      color:#fff; border:none; border-radius:4px; }
+      color:#fff; border:none; border-radius:4px;}
     #dpad button:active { background:rgba(255,255,255,0.4); }
   </style>
 </head>
@@ -74,12 +74,12 @@ function start() {
       currentMap = msg.map;
       return;
     }
-    if (msg.type === "pickupResult" || msg.type === "dropResult" || msg.type === "useResult") {
+    if (["pickupResult","dropResult","useResult"].includes(msg.type)) {
       return;
     }
 
     colliding   = msg.colliding || {};
-    groundItems = msg.groundItems || {};
+    groundItems = msg.groundItems  || {};
     for (let name in msg.players) {
       const inc = msg.players[name];
       if (!players[name]) {
@@ -92,7 +92,8 @@ function start() {
         };
       } else {
         Object.assign(players[name], {
-          x: inc.x, y: inc.y,
+          x: inc.x,
+          y: inc.y,
           map: inc.map,
           inventory: inc.inventory,
           health: inc.health
@@ -109,99 +110,105 @@ function start() {
 
 window.addEventListener("keydown", e => {
   keys[e.key.toLowerCase()] = true;
-  if (e.key.toLowerCase() === "e") sendPickup();
-  if (e.key.toLowerCase() === "u") sendUse();
+  if (e.key.toLowerCase()==="e") sendPickup();
+  if (e.key.toLowerCase()==="u") sendUse();
 });
-window.addEventListener("keyup",   e => keys[e.key.toLowerCase()] = false);
-window.addEventListener("blur",    () => keys = {});
+window.addEventListener("keyup",   e => keys[e.key.toLowerCase()]=false);
+window.addEventListener("blur",    ()=>keys={});
 
-["up","down","left","right"].forEach(dir => {
+["up","down","left","right"].forEach(dir=>{
   const btn = document.getElementById(dir);
   dpad[dir] = false;
-  btn.addEventListener("touchstart", e => { e.preventDefault(); dpad[dir] = true; });
-  btn.addEventListener("touchend",   e => { e.preventDefault(); dpad[dir] = false; });
+  btn.addEventListener("touchstart", e=>{ e.preventDefault(); dpad[dir]=true; });
+  btn.addEventListener("touchend",   e=>{ e.preventDefault(); dpad[dir]=false; });
 });
 
 document.getElementById("interact").addEventListener("click", sendPickup);
-document.getElementById("use").addEventListener("click", sendUse);
+document.getElementById("use").      addEventListener("click", sendUse);
 
-function sendPickup() {
-  if (socket.readyState === WebSocket.OPEN) {
+function sendPickup(){
+  if (socket.readyState===WebSocket.OPEN) {
     socket.send(JSON.stringify({ type: "pickup" }));
   }
 }
-function sendUse() {
-  if (socket.readyState === WebSocket.OPEN) {
+function sendUse(){
+  if (socket.readyState===WebSocket.OPEN) {
     socket.send(JSON.stringify({ type: "use" }));
   }
 }
 
-function loop() {
-  let dx = 0, dy = 0;
-  if (keys["w"] || dpad["up"])    dy = -1;
-  if (keys["s"] || dpad["down"])  dy =  1;
-  if (keys["a"] || dpad["left"])  dx = -1;
-  if (keys["d"] || dpad["right"]) dx =  1;
-  if (dx && dy) { dx *= 0.7071; dy *= 0.7071; }
+function loop(){
+  let dx=0, dy=0;
+  if (keys["w"]||dpad["up"])    dy=-1;
+  if (keys["s"]||dpad["down"])  dy= 1;
+  if (keys["a"]||dpad["left"])  dx=-1;
+  if (keys["d"]||dpad["right"]) dx= 1;
+  if (dx&&dy){ dx*=0.7071; dy*=0.7071; }
 
   const me = players[username];
-  if (me) {
-    const nx = Math.max(0, Math.min(800 - size, me.x + dx*speed));
-    const ny = Math.max(0, Math.min(600 - size, me.y + dy*speed));
-    if (nx !== me.x || ny !== me.y) {
-      socket.send(JSON.stringify({ dx: nx - me.x, dy: ny - me.y }));
-      me.x = nx; me.y = ny;
+  if (me){
+    const nx = Math.max(0,Math.min(800-size, me.x+dx*speed));
+    const ny = Math.max(0,Math.min(600-size, me.y+dy*speed));
+    if (nx!==me.x || ny!==me.y){
+      socket.send(JSON.stringify({dx:nx-me.x, dy:ny-me.y}));
+      me.x=nx; me.y=ny;
     }
   }
 
-  const nearItem = currentMap.name === "zone1" && me &&
-    Object.values(groundItems).some(it => Math.hypot(it.x - me.x, it.y - me.y) <= 30);
-  document.getElementById("interact").style.display = nearItem ? "block" : "none";
-  document.getElementById("use").style.display      = me && me.inventory ? "block" : "none";
+  // Show interact for pickup OR drop
+  const nearItem = me && Object.values(groundItems).some(it =>
+    Math.hypot(it.x-me.x, it.y-me.y)<=30
+  );
+  const showInteract = me && (me.inventory || (currentMap.name==="zone1" && nearItem));
+  document.getElementById("interact").style.display = showInteract ? "block" : "none";
+  document.getElementById("use").      style.display = me && me.inventory ? "block" : "none";
 
-  for (let name in players) {
-    const p = players[name];
+  // Smooth
+  for (let n in players){
+    const p = players[n];
     p.smoothX += (p.x - p.smoothX)*0.2;
     p.smoothY += (p.y - p.smoothY)*0.2;
   }
 
   // Background
-  ctx.fillStyle = currentMap.name === "zone1" ? "#223" : "#332";
-  ctx.fillRect(0, 0, 800, 600);
+  ctx.fillStyle = currentMap.name==="zone1" ? "#223" : "#332";
+  ctx.fillRect(0,0,800,600);
 
   // Items
-  if (currentMap.name === "zone1") {
-    for (let id in groundItems) {
-      const it = groundItems[id];
-      ctx.fillStyle = it.type === "apple" ? "#0f0" : "#f0f";
-      ctx.fillRect(it.x, it.y, 8, 8);
-      ctx.strokeStyle = "#fff";
-      ctx.strokeRect(it.x, it.y, 8, 8);
+  if (currentMap.name==="zone1"){
+    for (let id in groundItems){
+      const it=groundItems[id];
+      ctx.fillStyle = it.type==="apple" ? "#0f0" : "#f0f";
+      ctx.fillRect(it.x, it.y, 8,8);
+      ctx.strokeStyle="#fff";
+      ctx.strokeRect(it.x, it.y, 8,8);
     }
   }
 
   // Players
-  for (let name in players) {
-    const p = players[name];
-    if (p.map !== currentMap.name) continue;
-    const col = colliding[name]
-      ? (name === username ? "#fa0" : "#f00")
-      : (name === username ? "#0f0" : "#0ff");
-    ctx.fillStyle   = col;
-    ctx.fillRect(p.smoothX, p.smoothY, size, size);
-    ctx.strokeStyle = "#fff";
-    ctx.strokeRect(p.smoothX, p.smoothY, size, size);
-    ctx.fillStyle = "#fff";
-    ctx.font      = "10px sans-serif";
-    ctx.fillText(name, p.smoothX, p.smoothY - 4);
-    const barW = size, barH = 4;
-    ctx.fillStyle = "#f00";
-    ctx.fillRect(p.smoothX, p.smoothY - barH - 2, barW*(p.health/100), barH);
-    ctx.strokeStyle = "#fff";
-    ctx.strokeRect(p.smoothX, p.smoothY - barH - 2, barW, barH);
-    if (p.inventory) {
-      ctx.fillStyle = "#ff0";
-      ctx.fillRect(p.smoothX + size + 2, p.smoothY, 6, 6);
+  for (let n in players){
+    const p = players[n];
+    if (p.map!==currentMap.name) continue;
+    const col = colliding[n]
+      ? (n===username ? "#fa0" : "#f00")
+      : (n===username ? "#0f0" : "#0ff");
+    ctx.fillStyle=col;
+    ctx.fillRect(p.smoothX,p.smoothY,size,size);
+    ctx.strokeStyle="#fff";
+    ctx.strokeRect(p.smoothX,p.smoothY,size,size);
+    ctx.fillStyle="#fff";
+    ctx.font="10px sans-serif";
+    ctx.fillText(n, p.smoothX, p.smoothY-4);
+    // health
+    const barW=size, barH=4;
+    ctx.fillStyle="#f00";
+    ctx.fillRect(p.smoothX, p.smoothY-barH-2, barW*(p.health/100), barH);
+    ctx.strokeStyle="#fff";
+    ctx.strokeRect(p.smoothX, p.smoothY-barH-2, barW, barH);
+    // inventory icon
+    if(p.inventory){
+      ctx.fillStyle="#ff0";
+      ctx.fillRect(p.smoothX+size+2, p.smoothY, 6,6);
     }
   }
 
