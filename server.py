@@ -1,46 +1,26 @@
-import os
-import json
-import asyncio
-import uuid
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect
 from fastapi.responses import HTMLResponse
+import asyncio
 
 app = FastAPI()
+clients = {}  # WebSocket -> username
+world_state = {}  # username -> player data
 
-clients: dict[WebSocket, str] = {}       # ws -> username
-world_state: dict[str, dict] = {}        # username -> { map, x, y, inventory, health }
-ground_items: dict[str, dict] = {}       # item_id -> { type, x, y }
-MAPS: dict[str, dict] = {}               # map_name -> map data
-
-
-def load_maps():
-    """Load all JSON files from maps/ into MAPS."""
-    for fn in os.listdir("maps"):
-        if fn.endswith(".json"):
-            with open(os.path.join("maps", fn), encoding="utf-8") as f:
-                data = json.load(f)
-                MAPS[data["name"]] = data
-
-
-def spawn_initial_items():
-    """Spawn apples & poison apples only in zone1 at fixed positions."""
-    positions = [(100, 100), (300, 200), (500, 400)]
-    for pos in positions:
-        for kind in ("apple", "poison"):
-            item_id = str(uuid.uuid4())
-            ground_items[item_id] = {
-                "type": kind,
-                "x": pos[0] + (0 if kind == "apple" else 20),
-                "y": pos[1]
-            }
-
-
-@app.on_event("startup")
-async def startup():
-    load_maps()
-    spawn_initial_items()
-    asyncio.create_task(broadcast_loop())
-
+MAPS = {
+    "zone1": {
+        "name": "zone1",
+        "spawn": {"x": 100.0, "y": 100.0},
+        "objects": [
+            {"id": "apple1", "type": "apple", "x": 200.0, "y": 200.0},
+            {"id": "poison1", "type": "poison", "x": 300.0, "y": 300.0}
+        ]
+    },
+    "zone2": {
+        "name": "zone2",
+        "spawn": {"x": 400.0, "y": 100.0},
+        "objects": []
+    }
+}
 
 @app.get("/")
 async def index():
@@ -53,7 +33,7 @@ async def ws_endpoint(ws: WebSocket, username: str):
     await ws.accept()
     clients[ws] = username
 
-    # Initialize new player
+    # Initialize player if not already present
     if username not in world_state:
         world_state[username] = {
             "map": "zone1",
@@ -63,80 +43,60 @@ async def ws_endpoint(ws: WebSocket, username: str):
             "health": 100
         }
 
+    # Always send the current map data
+    await ws.send_json({
+        "type": "mapData",
+        "map": MAPS[world_state[username]["map"]]
+    })
+
     try:
         while True:
             data = await ws.receive_json()
             st = world_state[username]
 
-            # Movement update
+            # Movement
             if "dx" in data and "dy" in data:
-                nx = st["x"] + data["dx"]
-                ny = st["y"] + data["dy"]
-                st["x"] = max(0, min(800 - 10, nx))
-                st["y"] = max(0, min(600 - 10, ny))
+                st["x"] += data["dx"]
+                st["y"] += data["dy"]
+                st["x"] = max(0, min(800 - 10, st["x"]))
+                st["y"] = max(0, min(600 - 10, st["y"]))
 
-                # Portal check
-                portal = MAPS[st["map"]]["portal"]
-                if (portal["x1"] <= st["x"] <= portal["x2"]
-                    and portal["y1"] <= st["y"] <= portal["y2"]):
-                    # switch maps
-                    new_map = portal["target"]
-                    st["map"] = new_map
-                    st["x"], st["y"] = (
-                        MAPS[new_map]["spawn"]["x"],
-                        MAPS[new_map]["spawn"]["y"]
-                    )
-                    # notify client of new map data
+            # Pickup
+            elif data.get("action") == "pickup":
+                for obj in MAPS[st["map"]]["objects"]:
+                    if abs(obj["x"] - st["x"]) < 10 and abs(obj["y"] - st["y"]) < 10:
+                        st["inventory"] = obj
+                        MAPS[st["map"]]["objects"].remove(obj)
+                        break
+
+            # Drop
+            elif data.get("action") == "drop":
+                if st["inventory"]:
+                    obj = st["inventory"]
+                    obj["x"] = st["x"]
+                    obj["y"] = st["y"]
+                    MAPS[st["map"]]["objects"].append(obj)
+                    st["inventory"] = None
+
+            # Use
+            elif data.get("action") == "use":
+                if st["inventory"]:
+                    if st["inventory"]["type"] == "apple":
+                        st["health"] = min(100, st["health"] + 10)
+                    elif st["inventory"]["type"] == "poison":
+                        st["health"] = max(0, st["health"] - 20)
+                    st["inventory"] = None
+
+            # Change map
+            elif data.get("action") == "changeMap":
+                target = data.get("target")
+                if target in MAPS:
+                    st["map"] = target
+                    st["x"] = MAPS[target]["spawn"]["x"]
+                    st["y"] = MAPS[target]["spawn"]["y"]
                     await ws.send_json({
                         "type": "mapData",
-                        "map": MAPS[new_map]
-                    })
-
-            # Pickup / Drop
-            elif data.get("type") == "pickup":
-                player = st
-                # if holding, drop it
-                if player["inventory"]:
-                    dropped = player["inventory"]
-                    item_id = str(uuid.uuid4())
-                    ground_items[item_id] = {
-                        "type": dropped["type"],
-                        "x": player["x"],
-                        "y": player["y"]
-                    }
-                    player["inventory"] = None
-                    await ws.send_json({"type": "dropResult", "success": True})
-                else:
-                    # find nearest ground item in current zone
-                    nearest_id, nearest_d = None, float("inf")
-                    for iid, it in ground_items.items():
-                        d = abs(it["x"] - player["x"]) + abs(it["y"] - player["y"])
-                        if d < nearest_d:
-                            nearest_d, nearest_id = d, iid
-                    if nearest_id and nearest_d <= 30 and st["map"] == "zone1":
-                        picked = ground_items.pop(nearest_id)
-                        player["inventory"] = {"type": picked["type"]}
-                        await ws.send_json({
-                            "type": "pickupResult",
-                            "success": True,
-                            "item": picked
-                        })
-                    else:
-                        await ws.send_json({"type": "pickupResult", "success": False})
-
-            # Use item
-            elif data.get("type") == "use":
-                player = st
-                itm = player["inventory"]
-                if itm:
-                    if itm["type"] == "apple":
-                        player["health"] = min(100, player["health"] + 20)
-                    elif itm["type"] == "poison":
-                        player["health"] = max(0, player["health"] - 30)
-                    player["inventory"] = None
-                    await ws.send_json({
-                        "type": "useResult",
-                        "health": player["health"]
+                        "map": MAPS[target]
                     })
 
     except WebSocketDisconnect:
@@ -144,41 +104,46 @@ async def ws_endpoint(ws: WebSocket, username: str):
         world_state.pop(username, None)
 
 
+@app.on_event("startup")
+async def start_broadcast():
+    asyncio.create_task(broadcast_loop())
+
+
 async def broadcast_loop():
-    """20 FPS world-state broadcast, per-map filtering."""
     size = 10
     while True:
-        # detect collisions
-        colliding: dict[str, bool] = {}
+        # Collision detection
+        colliding = {}
         names = list(world_state)
         for i in range(len(names)):
             for j in range(i + 1, len(names)):
                 a, b = names[i], names[j]
+                if world_state[a]["map"] != world_state[b]["map"]:
+                    continue
                 ax, ay = world_state[a]["x"], world_state[a]["y"]
                 bx, by = world_state[b]["x"], world_state[b]["y"]
                 if abs(ax - bx) < size and abs(ay - by) < size:
-                    colliding[a] = colliding[b] = True
+                    colliding[a] = True
+                    colliding[b] = True
 
-        # group players by map
-        by_map: dict[str, dict] = {}
-        for name, st in world_state.items():
-            by_map.setdefault(st["map"], {})[name] = st
-
-        # send each client only its current-map state
-        for ws, uname in list(clients.items()):
-            st = world_state.get(uname)
-            if not st:
-                continue
-            m = st["map"]
-            payload = {
-                "players":   by_map.get(m, {}),
-                "colliding": {n: True for n in colliding if world_state[n]["map"] == m}
-            }
-            if m == "zone1":
-                payload["groundItems"] = ground_items
+        # Broadcast per-map updates
+        for ws, username in list(clients.items()):
             try:
-                await ws.send_json(payload)
+                st = world_state[username]
+                player_map = st["map"]
+
+                visible_players = {
+                    name: data for name, data in world_state.items()
+                    if data["map"] == player_map
+                }
+
+                await ws.send_json({
+                    "type": "update",
+                    "players": visible_players,
+                    "colliding": colliding,
+                    "objects": MAPS[player_map]["objects"]
+                })
             except:
                 pass
 
-        await asyncio.sleep(1 / 20)
+        await asyncio.sleep(1 / 20)  # 20 FPS

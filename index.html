@@ -60,7 +60,7 @@ const ctx    = canvas.getContext("2d");
 const size   = 10, speed = 4;
 let socket, username;
 let players = {}, colliding = {}, groundItems = {};
-let currentMap = null;
+let currentMap = { name: "zone1" };   // ← default so we draw immediately
 let keys = {}, dpad = {};
 
 function start() {
@@ -69,6 +69,9 @@ function start() {
   document.getElementById("login").style.display = "none";
   canvas.style.display = "block";
   document.getElementById("dpad").style.display = "block";
+
+  // Reset world-state
+  players = {}; colliding = {}; groundItems = {};
 
   const proto = location.protocol === "https:" ? "wss" : "ws";
   socket = new WebSocket(`${proto}://${location.host}/ws/${username}`);
@@ -82,10 +85,12 @@ function start() {
       return;
     }
 
-    // Pickup/Drop/Use results (optional logging)
-    if (msg.type === "pickupResult") return;
-    if (msg.type === "dropResult") return;
-    if (msg.type === "useResult") return;
+    // Ignore direct-action results
+    if (msg.type === "pickupResult"
+     || msg.type === "dropResult"
+     || msg.type === "useResult") {
+      return;
+    }
 
     // Regular world update
     colliding   = msg.colliding || {};
@@ -152,8 +157,6 @@ function sendUse() {
 }
 
 function loop() {
-  if (!currentMap) return requestAnimationFrame(loop);
-
   // Movement
   let dx = 0, dy = 0;
   if (keys["w"] || dpad["up"])    dy = -1;
@@ -161,6 +164,7 @@ function loop() {
   if (keys["a"] || dpad["left"])  dx = -1;
   if (keys["d"] || dpad["right"]) dx =  1;
   if (dx && dy) { dx *= 0.7071; dy *= 0.7071; }
+
   const me = players[username];
   if (me) {
     const nx = Math.max(0, Math.min(800 - size, me.x + dx * speed));
@@ -172,11 +176,11 @@ function loop() {
   }
 
   // Button visibility
-  const nearItem = Object.values(groundItems).some(it =>
+  const nearItem = currentMap.name === "zone1" && me && Object.values(groundItems).some(it =>
     Math.hypot(it.x - me.x, it.y - me.y) <= 30
   );
-  document.getElementById("interact").style.display = (currentMap.name === "zone1" && nearItem) ? "block" : "none";
-  document.getElementById("use").style.display = me && me.inventory ? "block" : "none";
+  document.getElementById("interact").style.display = nearItem ? "block" : "none";
+  document.getElementById("use").style.display      = me && me.inventory ? "block" : "none";
 
   // Smooth interpolation
   for (let name in players) {
@@ -185,7 +189,7 @@ function loop() {
     p.smoothY += (p.y - p.smoothY) * 0.2;
   }
 
-  // Draw background for each zone
+  // Draw background
   ctx.fillStyle = currentMap.name === "zone1" ? "#223" : "#332";
   ctx.fillRect(0, 0, 800, 600);
 
@@ -204,24 +208,29 @@ function loop() {
   for (let name in players) {
     const p = players[name];
     if (p.map !== currentMap.name) continue;
+
     const col = colliding[name]
       ? (name === username ? "#fa0" : "#f00")
       : (name === username ? "#0f0" : "#0ff");
-    // Square
-    ctx.fillStyle = col;
+
+    // Player square
+    ctx.fillStyle   = col;
     ctx.fillRect(p.smoothX, p.smoothY, size, size);
     ctx.strokeStyle = "#fff";
     ctx.strokeRect(p.smoothX, p.smoothY, size, size);
+
     // Name
     ctx.fillStyle = "#fff";
-    ctx.font = "10px sans-serif";
+    ctx.font      = "10px sans-serif";
     ctx.fillText(name, p.smoothX, p.smoothY - 4);
+
     // Health bar
     const barW = size, barH = 4;
     ctx.fillStyle = "#f00";
     ctx.fillRect(p.smoothX, p.smoothY - barH - 2, barW * (p.health / 100), barH);
     ctx.strokeStyle = "#fff";
     ctx.strokeRect(p.smoothX, p.smoothY - barH - 2, barW, barH);
+
     // Inventory icon
     if (p.inventory) {
       ctx.fillStyle = "#ff0";
