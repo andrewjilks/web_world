@@ -83,10 +83,10 @@ async def ws_ws(ws: WebSocket, username: str):
                     midpoint = (portal["x1"] + portal["x2"]) / 2
                     if st["x"] > midpoint:
                         # exited on right
-                        st["x"] = new_portal["x1"] + 10
+                        st["x"] = new_portal["x1"] + 100
                     else:
                         # exited on left
-                        st["x"] = new_portal["x2"] - 10
+                        st["x"] = new_portal["x2"] - 100
 
                     # Clamp Y into bounds
                     st["y"] = max(0, min(600 - 10, old_y))
